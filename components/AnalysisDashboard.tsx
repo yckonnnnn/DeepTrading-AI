@@ -709,11 +709,66 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
     return <Activity size={20} className="text-gray-400" />;
   };
 
-  const displayIndicators = orderedIndicators.map(name => 
+  // 如果有真实数据，优先使用真实数据的技术指标
+  const getRealDataIndicators = () => {
+    if (!data.realData?.indicators) return null;
+    
+    const { rsi, macd, bollingerBands, volume, trendStrength } = data.realData.indicators;
+    
+    return [
+      {
+        name: 'RSI',
+        value: rsi.status,
+        status: rsi.status,
+        signal: rsi.interpretation,
+        sentiment: rsi.sentiment,
+        realValue: rsi.value
+      },
+      {
+        name: 'MACD',
+        value: macd.status,
+        status: macd.status,
+        signal: macd.interpretation,
+        sentiment: macd.sentiment,
+        realValue: `DIF:${macd.dif} DEA:${macd.dea}`
+      },
+      {
+        name: '布林带',
+        value: bollingerBands.status,
+        status: bollingerBands.status,
+        signal: bollingerBands.interpretation,
+        sentiment: bollingerBands.sentiment,
+        realValue: `位置:${bollingerBands.currentPosition}`
+      },
+      {
+        name: '成交量',
+        value: volume.status,
+        status: volume.status,
+        signal: volume.interpretation,
+        sentiment: volume.sentiment,
+        realValue: volume.latest
+      },
+      {
+        name: '趋势强度',
+        value: trendStrength.status,
+        status: trendStrength.status,
+        signal: trendStrength.interpretation,
+        sentiment: trendStrength.sentiment,
+        realValue: `强度:${trendStrength.strength}`
+      }
+    ];
+  };
+
+  // 优先使用真实数据，否则回退到 AI 生成的指标
+  const realIndicators = getRealDataIndicators();
+  const displayIndicators = realIndicators || orderedIndicators.map(name => 
     data.technicalIndicators.find(i => i.name.includes(name)) || 
     data.technicalIndicators.find(i => i.name === name) ||
     { name, value: 'N/A', sentiment: 'neutral', signal: 'No data' } as any
   );
+  
+  // 是否有真实数据
+  const hasRealData = !!data.realData;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-10 export-container" ref={dashboardRef}>
@@ -835,11 +890,24 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                         <Layers size={20} className="text-blue-500" />
                         技术指标
                     </h3>
+                    {hasRealData && (
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                        <CheckCircle2 size={10} /> 实时数据
+                      </span>
+                    )}
                 </div>
+
+                {/* 显示数据日期（如果有真实数据） */}
+                {hasRealData && data.realData?.stockInfo && (
+                  <div className="mb-4 px-3 py-2 bg-slate-50 rounded-xl text-xs text-slate-600 flex items-center gap-2 border border-slate-100">
+                    <History size={12} />
+                    数据日期: {data.realData.stockInfo.latestDate} | 收盘价: ¥{data.realData.stockInfo.latestPrice}
+                  </div>
+                )}
                 
                 {/* Indicator List */}
                 <div className="space-y-6 mb-8">
-                    {displayIndicators.map((tech, idx) => (
+                    {displayIndicators.map((tech: any, idx: number) => (
                     <div key={idx} className="group">
                         <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-3">
@@ -848,9 +916,23 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                                 </div>
                                 <span className="font-bold text-gray-700 w-24 truncate" title={tech.name}>{tech.name}</span>
                             </div>
-                            <span className="font-bold text-xs md:text-sm text-orange-700 text-right bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg shadow-sm">
-                                {tech.value}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {/* 显示真实数值（如果有） */}
+                              {tech.realValue && (
+                                <span className="text-[10px] text-gray-400 font-mono hidden sm:inline">
+                                  {tech.realValue}
+                                </span>
+                              )}
+                              <span className={`font-bold text-xs md:text-sm text-right px-3 py-1.5 rounded-lg shadow-sm ${
+                                tech.sentiment === 'bullish' 
+                                  ? 'text-rose-700 bg-rose-50 border border-rose-100' 
+                                  : tech.sentiment === 'bearish' 
+                                    ? 'text-emerald-700 bg-emerald-50 border border-emerald-100' 
+                                    : 'text-orange-700 bg-orange-50 border border-orange-100'
+                              }`}>
+                                  {tech.value}
+                              </span>
+                            </div>
                         </div>
                         <p className="text-xs text-gray-500 pl-11 group-hover:text-gray-700 transition-colors">
                             {tech.signal}

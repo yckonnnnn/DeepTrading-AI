@@ -1,6 +1,7 @@
-import { AIAnalysisReport } from "../types";
+import { AIAnalysisReport, RealStockData } from "../types";
 
 const API_BASE_URL = "http://localhost:3001";
+const STOCK_INDICATORS_URL = `${API_BASE_URL}/api/stock-indicators`;
 const API_URL = `${API_BASE_URL}/api/analyze`;
 const KLINE_API_URL = `${API_BASE_URL}/api/analyze-kline`;
 
@@ -94,6 +95,32 @@ export const uploadImage = async (
     return await response.json();
   } catch (error) {
     console.error("图片上传请求失败:", error);
+    return null;
+  }
+};
+
+/**
+ * 获取股票技术指标数据（真实数据）
+ * @param symbol - 股票代码
+ */
+export const getStockIndicators = async (
+  symbol: string
+): Promise<RealStockData | null> => {
+  try {
+    // 清理股票代码，只保留数字
+    const cleanSymbol = symbol.replace(/[^0-9]/g, '').trim();
+    if (!cleanSymbol) return null;
+
+    const response = await fetch(`${STOCK_INDICATORS_URL}/${cleanSymbol}`);
+
+    if (!response.ok) {
+      console.error("获取股票指标失败:", response.status);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("获取股票指标请求失败:", error);
     return null;
   }
 };

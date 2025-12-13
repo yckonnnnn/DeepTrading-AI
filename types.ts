@@ -33,6 +33,83 @@ export interface AnalysisStrategy {
   logic: string;
 }
 
+// ==================== 真实股票数据类型 ====================
+
+export interface StockInfo {
+  symbol: string;
+  name: string;
+  industry: string | null;
+  latestDate: string;
+  latestPrice: number;
+  open: number;
+  high: number;
+  low: number;
+  preClose: number;
+  changeAmount: number;
+  changePercent: number;
+}
+
+export interface MACDIndicator {
+  dif: string;
+  dea: string;
+  histogram: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface RSIIndicator {
+  value: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface BollingerBandsIndicator {
+  upper: string;
+  middle: string;
+  lower: string;
+  currentPosition: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface VolumeIndicator {
+  latest: string;
+  avg5: string;
+  avg20: string;
+  changePercent: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface TrendStrengthIndicator {
+  strength: string;
+  periodChange: string;
+  upDays: number;
+  downDays: number;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface RealStockIndicators {
+  macd: MACDIndicator;
+  rsi: RSIIndicator;
+  bollingerBands: BollingerBandsIndicator;
+  volume: VolumeIndicator;
+  trendStrength: TrendStrengthIndicator;
+}
+
+export interface RealStockData {
+  stockInfo: StockInfo;
+  indicators: RealStockIndicators;
+}
+
+// ==================== AI 分析报告类型 ====================
+
 export interface AIAnalysisReport {
   id: string; // Added ID for list keys
   stockName: string;
@@ -51,4 +128,5 @@ export interface AIAnalysisReport {
   technicalIndicators: TechnicalIndicator[]; // Must contain RSI, MACD, Bollinger Bands, Volume, Trend Strength
   technicalAnalysisAdvice: string; // New: Specific advice based on technicals
   strategy: AnalysisStrategy;
+  realData?: RealStockData; // 新增：真实股票数据和指标
 }

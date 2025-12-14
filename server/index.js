@@ -24,7 +24,14 @@ const pool = mysql.createPool({
   port: parseInt(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  // 防止连接超时
+  connectTimeout: 60000,
+  // 空闲连接超时（毫秒）
+  idleTimeout: 60000,
+  // 启用连接保活
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 });
 
 // 测试数据库连接
@@ -449,21 +456,34 @@ function analyzeTrendStrength(stockData) {
  * @returns {Object} 股票数据和技术指标
  */
 async function getStockDataWithIndicators(symbol) {
-  // 清理股票代码（去除空格和非数字字符）
+  // 清理股票代码（去除空格和非数字字符，只保留数字部分）
   const cleanSymbol = symbol.replace(/[^0-9]/g, '').trim();
   
+  console.log(`   🔢 原始输入: "${symbol}" → 清理后: "${cleanSymbol}"`);
+  
   if (!cleanSymbol) {
+    console.log(`   ⚠️ 清理后股票代码为空，跳过数据库查询`);
     return null;
   }
   
+  // 验证股票代码格式（A股代码为6位数字）
+  if (cleanSymbol.length !== 6) {
+    console.log(`   ⚠️ 股票代码长度不正确: ${cleanSymbol.length}位，期望6位`);
+    return null;
+  }
+  
+  let connection;
   try {
-    const [rows] = await pool.execute(
+    // 从连接池获取连接
+    connection = await pool.getConnection();
+    
+    const [rows] = await connection.execute(
       'SELECT * FROM stock_daily WHERE symbol = ? ORDER BY date DESC LIMIT 60',
       [cleanSymbol]
     );
     
     if (!rows || rows.length === 0) {
-      console.log(`❌ 未找到股票 ${cleanSymbol} 的数据`);
+      console.log(`   ❌ 未找到股票 ${cleanSymbol} 的数据`);
       return null;
     }
     
@@ -508,8 +528,13 @@ async function getStockDataWithIndicators(symbol) {
       rawData: stockData
     };
   } catch (error) {
-    console.error(`❌ 查询股票数据失败:`, error.message);
+    console.error(`   ❌ 查询股票数据失败:`, error.message);
     return null;
+  } finally {
+    // 确保释放连接回连接池
+    if (connection) {
+      connection.release();
+    }
   }
 }
 

@@ -152,6 +152,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [error, setError] = useState<boolean>(false);
+  const [invalidStockCode, setInvalidStockCode] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisReport | null>(null);
   
   // Search Suggestions State
@@ -217,6 +218,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
     setShowResult(true);
     setIsAnalyzing(true);
     setError(false);
+    setInvalidStockCode(false);
     setAnalysisResult(null);
 
     // Scroll to result area smoothly
@@ -251,7 +253,12 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
     } catch (err) {
       console.error('分析失败:', err);
       setIsAnalyzing(false);
-      setError(true);
+      const anyErr: any = err as any;
+      if (anyErr?.code === 'INVALID_STOCK_CODE') {
+        setInvalidStockCode(true);
+      } else {
+        setError(true);
+      }
     }
   };
 
@@ -560,6 +567,25 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                <div ref={resultRef} className="min-h-[400px]">
                   {isAnalyzing ? (
                      <LoadingView />
+                  ) : invalidStockCode ? (
+                     <div className="w-full py-24 flex flex-col items-center justify-center bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-amber-100 animate-in fade-in zoom-in duration-300">
+                        <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6">
+                          <AlertTriangle size={32} className="text-amber-500" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">请输入正确股票代码</h3>
+                        <p className="text-gray-500 text-sm mb-8 text-center max-w-md px-6">
+                          请输入 6 位股票代码（如 600519 / 000001 / 300750），或从下方搜索建议中选择。
+                        </p>
+                        <button 
+                          onClick={() => {
+                            setShowResult(false);
+                            setInvalidStockCode(false);
+                          }}
+                          className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-colors"
+                        >
+                          返回修改
+                        </button>
+                     </div>
                   ) : error ? (
                      <ErrorView onRetry={handleAnalyze} />
                   ) : analysisResult ? (

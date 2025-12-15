@@ -25,12 +25,43 @@ export interface TechnicalIndicator {
   sentiment: 'bullish' | 'bearish' | 'neutral';
 }
 
+export interface TechnicalAnalysisAdvice {
+  points: string[];
+  summary: string;
+}
+
+export interface StrategyLogic {
+  points: string[];
+  riskWarning: string;
+}
+
 export interface AnalysisStrategy {
   action: string; // e.g., "Buy on Dip"
   entryRange: string;
   targetPrice: string;
   stopLoss: string;
-  logic: string;
+  logic: string | StrategyLogic;
+}
+
+export interface MoneyFlowMonitor {
+  tradeDate: string;
+  netInflow3d: number | null; // 单位：亿元（前端展示用）
+  netInflow5d: number | null; // 单位：亿元（前端展示用）
+  netInflow20d: number | null; // 单位：亿元（前端展示用）
+  retailSentimentRatio: number | null; // 单位：%，0-100
+}
+
+export type NewsSentiment = 'positive' | 'negative' | 'neutral';
+
+export interface NewsItem {
+  title: string;
+  sentiment: NewsSentiment;
+}
+
+export interface NewsAnalysis {
+  sentimentScore: number;
+  news: NewsItem[];
+  summary: string;
 }
 
 // ==================== 真实股票数据类型 ====================
@@ -126,7 +157,9 @@ export interface AIAnalysisReport {
   marketSentiment: string; // e.g., "Optimistic"
   keyDrivers: string[];
   technicalIndicators: TechnicalIndicator[]; // Must contain RSI, MACD, Bollinger Bands, Volume, Trend Strength
-  technicalAnalysisAdvice: string; // New: Specific advice based on technicals
+  technicalAnalysisAdvice: string | TechnicalAnalysisAdvice; // 兼容旧数据（string）与新版结构（points/summary）
   strategy: AnalysisStrategy;
+  moneyFlowMonitor?: MoneyFlowMonitor; // 新增：真实资金流向监控（来自 a_stock_money_flow）
+  newsAnalysis?: NewsAnalysis; // 新增：舆情风向分析（当前可用假数据，后续可接真实新闻源）
   realData?: RealStockData; // 新增：真实股票数据和指标
 }

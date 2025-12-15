@@ -15,7 +15,7 @@ dotenv.config({ path: '.env.local' });
 
 const app = express();
 
-// ==================== MySQL 数据库连接池 ====================
+// ========配置数据============ MySQL 数据库连接池 ====================
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -539,9 +539,66 @@ async function getStockDataWithIndicators(symbol) {
 }
 
 /**
+ * 从数据库获取资金流向监控数据（a_stock_money_flow 最新交易日）
+ * 单位处理：DB 为“万元”，返回给前端与模型时换算为“亿元”（/10000）
+ */
+async function getMoneyFlowMonitor(symbol) {
+  const cleanSymbol = symbol.replace(/[^0-9]/g, '').trim();
+  if (!cleanSymbol || cleanSymbol.length !== 6) return null;
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    const [rows] = await connection.execute(
+      'SELECT trade_date, net_inflow_3d, net_inflow_5d, net_inflow_20d, retail_sentiment_ratio FROM a_stock_money_flow WHERE symbol = ? ORDER BY trade_date DESC LIMIT 1',
+      [cleanSymbol]
+    );
+
+    if (!rows || rows.length === 0) return null;
+
+    const r = rows[0];
+    const toYi = (v) => {
+      if (v === null || v === undefined) return null;
+      const n = Number(v);
+      if (Number.isNaN(n)) return null;
+      return n / 10000;
+    };
+
+    return {
+      tradeDate: r.trade_date,
+      netInflow3d: toYi(r.net_inflow_3d),
+      netInflow5d: toYi(r.net_inflow_5d),
+      netInflow20d: toYi(r.net_inflow_20d),
+      retailSentimentRatio: r.retail_sentiment_ratio === null || r.retail_sentiment_ratio === undefined
+        ? null
+        : Number(r.retail_sentiment_ratio)
+    };
+  } catch (error) {
+    console.error('   ❌ 查询资金流向失败:', error.message);
+    return null;
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
+function buildDemoNewsAnalysis(stockName) {
+  const name = stockName || '该股';
+  return {
+    sentimentScore: 72,
+    news: [
+      { title: `${name} 近期获得机构关注，资金博弈热度升温`, sentiment: 'positive' },
+      { title: `行业政策预期分化，短期波动可能加大`, sentiment: 'neutral' },
+      { title: `市场风险偏好回落，注意情绪回撤`, sentiment: 'negative' }
+    ],
+    summary: '当前舆情热度偏高，利好与中性信息交织，短线可能放大波动。建议关注关键价位附近的量能变化，避免追涨杀跌。'
+  };
+}
+
+/**
  * 构建包含真实数据的增强 Prompt
  */
-function buildEnhancedPrompt(stockDataWithIndicators, strategyMode, userQuery) {
+function buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategyMode, userQuery) {
   const { stockInfo, indicators } = stockDataWithIndicators;
   
   return `
@@ -589,6 +646,13 @@ function buildEnhancedPrompt(stockDataWithIndicators, strategyMode, userQuery) {
 - 上涨天数: ${indicators.trendStrength.upDays} | 下跌天数: ${indicators.trendStrength.downDays}
 - 状态: ${indicators.trendStrength.status}
 - 解读: ${indicators.trendStrength.interpretation}
+
+## 资金与情绪监控（来自数据库真实数据：a_stock_money_flow）
+- 数据日期: ${moneyFlowMonitor?.tradeDate || '未知'}
+- 3日净流入(亿元): ${moneyFlowMonitor?.netInflow3d ?? 'N/A'}
+- 5日净流入(亿元): ${moneyFlowMonitor?.netInflow5d ?? 'N/A'}
+- 20日净流入(亿元): ${moneyFlowMonitor?.netInflow20d ?? 'N/A'}
+- 散户情绪(%): ${moneyFlowMonitor?.retailSentimentRatio ?? 'N/A'}
 
 ## 分析要求
 请使用「${strategyMode}」策略，基于以上真实数据进行深度分析。
@@ -671,13 +735,26 @@ const SYSTEM_INSTRUCTION = `
       "sentiment": "bullish" | "bearish" | "neutral"
     }
   ],
-  "technicalAnalysisAdvice": "技术分析建议（至少150字），用**粗体**标记关键信号",
+  "technicalAnalysisAdvice": {
+    "points": ["建议点1", "建议点2", "建议点3"],
+    "summary": "一句话总结（可用**粗体**标记关键信号）"
+  },
   "strategy": {
     "action": "操作建议短语",
     "entryRange": "入场价格区间",
     "targetPrice": "目标价位",
     "stopLoss": "止损价位",
-    "logic": "详细策略逻辑（至少300字），用**粗体**标记关键点"
+    "logic": {
+      "points": ["逻辑点1", "逻辑点2", "逻辑点3"],
+      "riskWarning": "风险提示一句话"
+    }
+  },
+  "newsAnalysis": {
+    "sentimentScore": 0-100的数字,
+    "news": [
+      { "title": "新闻标题", "sentiment": "positive" | "negative" | "neutral" }
+    ],
+    "summary": "舆情总结一句话"
   }
 }
 
@@ -697,6 +774,15 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const { prompt, imageBase64, strategyMode } = req.body;
 
+    const extractStockCode = (input) => {
+      if (!input || typeof input !== 'string') return null;
+      const code = input.replace(/[^0-9]/g, '').trim();
+      if (!code || code.length !== 6) return null;
+      // A 股常见：60/68(沪), 00/30(深), 83/87/88/43/47(北交所部分)
+      if (/^(60|68|00|30|83|87|88|43|47)\d{4}$/.test(code)) return code;
+      return null;
+    };
+
     console.log('📊 收到股票分析请求:');
     console.log(`   📝 查询: ${prompt}`);
     console.log(`   📈 策略: ${strategyMode}`);
@@ -707,12 +793,34 @@ app.post('/api/analyze', async (req, res) => {
 
     const userContent = [];
     let stockDataWithIndicators = null;
+    let moneyFlowMonitor = null;
     let enhancedPrompt = '';
 
-    // 如果不是图片分析，尝试从数据库获取真实股票数据
+    // 如果不是图片分析，先校验股票代码，非法输入不调用大模型
     if (!imageBase64) {
+      const stockCode = extractStockCode(prompt);
+      if (!stockCode) {
+        console.log('   ⚠️ 输入不包含合法股票代码，已拒绝调用大模型');
+        return res.status(400).json({
+          error: '请输入正确的股票代码（6位数字，如 600519 / 000001 / 300750）',
+          code: 'INVALID_STOCK_CODE'
+        });
+      }
+
       console.log('   🔍 正在查询数据库获取真实股票数据...');
       stockDataWithIndicators = await getStockDataWithIndicators(prompt);
+      moneyFlowMonitor = await getMoneyFlowMonitor(prompt);
+
+      if (moneyFlowMonitor) {
+        console.log('   💸 资金与情绪监控(最新):');
+        console.log(`      📅 trade_date: ${moneyFlowMonitor.tradeDate}`);
+        console.log(`      💰 3D净流入(亿元): ${moneyFlowMonitor.netInflow3d}`);
+        console.log(`      💰 5D净流入(亿元): ${moneyFlowMonitor.netInflow5d}`);
+        console.log(`      💰 20D净流入(亿元): ${moneyFlowMonitor.netInflow20d}`);
+        console.log(`      🙂 retail_sentiment_ratio(%): ${moneyFlowMonitor.retailSentimentRatio}`);
+      } else {
+        console.log('   💸 未查询到资金与情绪监控数据(a_stock_money_flow)');
+      }
       
       if (stockDataWithIndicators) {
         console.log(`   ✅ 成功获取 ${stockDataWithIndicators.stockInfo.name}(${stockDataWithIndicators.stockInfo.symbol}) 的数据`);
@@ -720,11 +828,19 @@ app.post('/api/analyze', async (req, res) => {
         console.log(`   💰 最新价格: ${stockDataWithIndicators.stockInfo.latestPrice}`);
         
         // 构建包含真实数据的增强 Prompt
-        enhancedPrompt = buildEnhancedPrompt(stockDataWithIndicators, strategyMode, prompt);
+        enhancedPrompt = buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategyMode, prompt);
         userContent.push({ type: 'text', text: enhancedPrompt });
       } else {
-        console.log('   ⚠️ 未找到股票数据，使用普通分析模式');
-        userContent.push({ type: 'text', text: `使用「${strategyMode}」策略分析以下股票: ${prompt}` });
+        console.log('   ⚠️ 未找到股票日线数据，使用降级分析模式');
+
+        if (moneyFlowMonitor) {
+          userContent.push({
+            type: 'text',
+            text: `使用「${strategyMode}」策略分析以下股票: ${prompt}\n\n可用数据补充（来自数据库真实数据：a_stock_money_flow）：\n- 数据日期: ${moneyFlowMonitor.tradeDate}\n- 3日净流入(亿元): ${moneyFlowMonitor.netInflow3d ?? 'N/A'}\n- 5日净流入(亿元): ${moneyFlowMonitor.netInflow5d ?? 'N/A'}\n- 20日净流入(亿元): ${moneyFlowMonitor.netInflow20d ?? 'N/A'}\n- 散户情绪(%): ${moneyFlowMonitor.retailSentimentRatio ?? 'N/A'}\n\n请基于以上真实资金数据与市场常识给出分析，并严格按 JSON 输出。`
+          });
+        } else {
+          userContent.push({ type: 'text', text: `使用「${strategyMode}」策略分析以下股票: ${prompt}` });
+        }
       }
     } else {
       const base64Data = imageBase64.startsWith('data:')
@@ -773,6 +889,14 @@ app.post('/api/analyze', async (req, res) => {
         // 确保使用数据库中的股票名称和代码
         parsedData.stockName = stockDataWithIndicators.stockInfo.name;
         parsedData.stockCode = stockDataWithIndicators.stockInfo.symbol;
+      }
+
+      if (moneyFlowMonitor) {
+        parsedData.moneyFlowMonitor = moneyFlowMonitor;
+      }
+
+      if (!parsedData.newsAnalysis) {
+        parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
       }
 
       console.log(`   ✅ 分析完成: ${parsedData.stockName} - ${parsedData.recommendation}`);

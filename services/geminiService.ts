@@ -18,15 +18,23 @@ export const generateStockAnalysis = async (
     });
 
     if (!response.ok) {
-      console.error("Backend API Error:", response.status);
-      return null;
+      let errorData: any = null;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = null;
+      }
+      const err: any = new Error(errorData?.error || `Backend API Error: ${response.status}`);
+      err.status = response.status;
+      err.code = errorData?.code;
+      throw err;
     }
 
     const data = await response.json();
     return data as AIAnalysisReport;
   } catch (error) {
     console.error("Analysis request failed:", error);
-    return null;
+    throw error;
   }
 };
 

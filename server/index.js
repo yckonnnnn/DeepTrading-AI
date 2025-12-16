@@ -1096,10 +1096,17 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       const stockCodeFromImage = extractStockCode(parsedData.stockCode);
       if (!stockCodeFromImage) {
         console.log('   ⚠️ K线识图未识别出合法股票代码，已拒绝进入真实数据增强与合并');
-        return res.status(400).json({
-          error: '无法从K线图中识别出合法股票代码（6位数字）。请重新上传清晰截图，或切换到“代码诊断”手动输入。',
-          code: 'INVALID_STOCK_CODE'
-        });
+        parsedData.warning = {
+          code: 'UNRECOGNIZED_STOCK_CODE',
+          message: '未能从K线图中识别出合法A股股票代码，因此未合并数据库真实数据（技术指标/资金情绪）。以下为纯识图分析结果。'
+        };
+
+        if (!parsedData.newsAnalysis) {
+          parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
+        }
+
+        console.log(`✅ K 线分析完成(未合并真实数据): ${parsedData.recommendation}`);
+        return res.json(parsedData);
       }
 
       console.log(`   🔍 已识别股票代码: ${stockCodeFromImage}，开始查询数据库真实数据...`);

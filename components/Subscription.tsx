@@ -11,7 +11,7 @@ const plans = [
     originalPrice: '28',
     description: '短期体验，适合突击分析',
     features: [
-      '解锁 Gemini 2.5 Pro 深度分析',
+      '解锁 Deep Trading AI 2.5 Pro 深度分析',
       '每日 10 次 AI 诊断配额',
       '基础技术指标解读',
       '标准响应速度'

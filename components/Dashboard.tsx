@@ -43,10 +43,10 @@ const usageData = [
 ];
 
 const systemUpdates = [
-  { id: 1, title: '新模型上线: GPT-4 Turbo', date: '2023-10-24', type: 'new' },
-  { id: 2, title: '美股实时数据源维护通知', date: '2023-10-22', type: 'maintenance' },
-  { id: 3, title: '趋势跟踪策略算法优化完成', date: '2023-10-20', type: 'update' },
-  { id: 4, title: '用户中心界面升级', date: '2023-10-18', type: 'new' },
+  { id: 1, title: '新模型上线: GPT-4 Turbo', date: '2025-10-24', type: 'new' },
+  { id: 2, title: '美股实时数据源维护通知', date: '2025-10-22', type: 'maintenance' },
+  { id: 3, title: '趋势跟踪策略算法优化完成', date: '2025-10-20', type: 'update' },
+  { id: 4, title: '用户中心界面升级', date: '2025-10-18', type: 'new' },
 ];
 
 const sentimentData = [
@@ -80,7 +80,7 @@ const MembershipCard: React.FC<MembershipCardProps> = ({ tier, onSubscribe }) =>
             </div>
             
             <h2 className="text-3xl font-bold mb-2">专业版会员</h2>
-            <p className="text-gray-400 text-sm">有效期至 2024年12月31日</p>
+            <p className="text-gray-400 text-sm">有效期至 2025年12月31日</p>
         </div>
 
         <div className="relative z-10">

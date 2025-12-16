@@ -65,9 +65,17 @@ export const analyzeKlineImage = async (
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData: any = null;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = null;
+      }
       console.error("K 线分析 API 错误:", errorData);
-      throw new Error(errorData.error || "K 线分析失败");
+      const err: any = new Error(errorData?.error || "K 线分析失败");
+      err.status = response.status;
+      err.code = errorData?.code;
+      throw err;
     }
 
     const data = await response.json();

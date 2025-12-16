@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   Search, 
@@ -20,7 +19,9 @@ import {
   Zap,
   BarChart2,
   ScanLine,
-  Gift
+  Gift,
+  Check,
+  Loader2
 } from 'lucide-react';
 import { generateStockAnalysis, analyzeKlineImage } from '../services/geminiService';
 import { AIAnalysisReport, UserTier } from '../types';
@@ -62,27 +63,92 @@ const trendingStocks = [
   { code: '002347', name: '泰达股份' }
 ];
 
-const LoadingView = () => (
-  <div className="w-full py-24 flex flex-col items-center justify-center bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-gray-100 animate-in fade-in zoom-in duration-500">
-    <div className="relative mb-8">
-       <div className="w-24 h-24 bg-lime-50 rounded-full flex items-center justify-center relative z-10">
-          <BrainCircuit size={40} className="text-lime-600 animate-pulse" />
-       </div>
-       <div className="absolute inset-0 border-4 border-lime-200 rounded-full animate-ping opacity-30"></div>
-       <div className="absolute -inset-4 border border-dashed border-lime-300 rounded-full animate-[spin_10s_linear_infinite]"></div>
+const STEPS = {
+  text: [
+    { title: '全网数据扫描', sub: '正在从交易所同步实时行情与资金流向...' },
+    { title: '多因子量化计算', sub: 'RSI / MACD / 布林带 / 筹码分布运算中...' },
+    { title: 'AI 策略模型推理', sub: '结合趋势与情绪，生成最优交易计划...' },
+    { title: '生成最终报告', sub: '正在组织语言，输出可执行的交易建议...' },
+  ],
+  image: [
+    { title: '视觉特征提取', sub: '正在识别 K 线形态、均线排列与关键点位...' },
+    { title: '真实数据映射', sub: '根据识别代码，同步交易所实时行情数据...' },
+    { title: 'AI 深度逻辑推演', sub: '结合技术面与基本面，生成多空博弈策略...' },
+    { title: '生成最终报告', sub: '正在组织语言，输出可执行的交易建议...' },
+  ]
+};
+
+const LoadingView = ({ mode, currentStep }: { mode: 'text' | 'image', currentStep: number }) => {
+  const steps = STEPS[mode];
+  
+  return (
+    <div className="w-full py-12 md:py-16 flex flex-col items-center justify-center bg-white rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-gray-100 animate-in fade-in zoom-in duration-500 overflow-hidden relative">
+        {/* Background Decorative Elements */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 bg-gradient-to-b from-lime-50/50 to-transparent pointer-events-none" />
+        <div className="absolute top-[-50%] right-[-10%] w-96 h-96 bg-lime-200/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-72 h-72 bg-blue-200/20 rounded-full blur-3xl animate-pulse delay-700" />
+
+        <div className="w-full max-w-md px-8 relative z-10">
+            {/* Header Animation */}
+            <div className="flex flex-col items-center mb-10">
+                <div className="relative">
+                    <div className="w-20 h-20 bg-gradient-to-tr from-lime-400 to-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-lime-200 mb-6 rotate-3 transform transition-transform hover:rotate-6 duration-500">
+                        <BrainCircuit size={40} className="text-white animate-pulse" />
+                    </div>
+                    {/* Orbiting particles */}
+                    <div className="absolute inset-0 border-2 border-lime-100 rounded-2xl animate-[spin_4s_linear_infinite]" />
+                    <div className="absolute -inset-2 border border-lime-200/50 rounded-[1.2rem] animate-[spin_8s_linear_infinite_reverse]" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 tracking-tight">AI 深度分析中</h3>
+                <p className="text-gray-400 text-sm font-medium mt-2">DeepTrading Model 2.5 正在运行</p>
+            </div>
+
+            {/* Steps */}
+            <div className="flex flex-col gap-5">
+                {steps.map((step, idx) => {
+                    const isActive = idx === currentStep;
+                    const isCompleted = idx < currentStep;
+                    const isPending = idx > currentStep;
+
+                    return (
+                        <div key={idx} className={`flex items-center gap-4 transition-all duration-500 ${isPending ? 'opacity-40 grayscale' : 'opacity-100'}`}>
+                            {/* Icon Box */}
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border-2 transition-all duration-500 relative
+                                ${isCompleted ? 'bg-lime-500 border-lime-500 shadow-md shadow-lime-200' : 
+                                  isActive ? 'bg-white border-lime-500 shadow-lg shadow-lime-100 scale-110' : 
+                                  'bg-gray-50 border-gray-100'}`}>
+                                
+                                {isCompleted ? (
+                                    <Check size={20} className="text-white" strokeWidth={3} />
+                                ) : isActive ? (
+                                    <Loader2 size={20} className="text-lime-600 animate-spin" />
+                                ) : (
+                                    <div className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                                )}
+                            </div>
+
+                            {/* Text Content */}
+                            <div className="flex flex-col min-w-0 flex-1">
+                                <div className="flex justify-between items-center mb-0.5">
+                                    <h4 className={`font-bold text-base transition-colors duration-300 ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>
+                                        {step.title}
+                                    </h4>
+                                    {isActive && <span className="text-[10px] font-bold text-lime-600 bg-lime-50 px-2 py-0.5 rounded-full animate-pulse">处理中</span>}
+                                </div>
+                                {isActive && (
+                                    <p className="text-xs text-lime-600/80 font-medium truncate animate-in slide-in-from-left-2 fade-in duration-500">
+                                        {step.sub}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
     </div>
-    
-    <h3 className="text-2xl font-bold text-gray-900 mb-2">正在深度分析...</h3>
-    <div className="flex flex-col items-center gap-2 text-sm text-gray-400">
-       <p>AI 正在解读 K 线形态与技术指标</p>
-       <div className="flex gap-1.5 mt-2">
-         <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-bounce [animation-delay:-0.3s]"></span>
-         <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-bounce [animation-delay:-0.15s]"></span>
-         <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-bounce"></span>
-       </div>
-    </div>
-  </div>
-);
+  );
+};
 
 const ErrorView = ({ onRetry }: { onRetry: () => void }) => (
   <div className="w-full py-24 flex flex-col items-center justify-center bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-red-100 animate-in fade-in zoom-in duration-300">
@@ -164,6 +230,30 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   const [dailyUsage, setDailyUsage] = useState(0);
   const MAX_FREE_USAGE = 1;
   const isPro = userTier === 'pro';
+
+  const [currentStep, setCurrentStep] = useState(0);
+  
+  // Progress Stepper Logic
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setCurrentStep(0);
+      return;
+    }
+
+    const stepsCount = STEPS[activeInputTab].length;
+    // Timings based on mode
+    const stepDuration = activeInputTab === 'image' ? 8000 : 3000; // Image mode slower steps
+
+    const timer = setInterval(() => {
+      setCurrentStep(prev => {
+        if (prev < stepsCount - 1) return prev + 1;
+        return prev; // Stay on last step until done
+      });
+    }, stepDuration);
+
+    return () => clearInterval(timer);
+  }, [isAnalyzing, activeInputTab]);
+
   const isLimitReached = !isPro && dailyUsage >= MAX_FREE_USAGE;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -332,7 +422,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                         <div>
                             <h2 className="text-xl md:text-2xl font-extrabold text-gray-900 tracking-tight">智能分析中心</h2>
                             <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200">Gemini 2.5 Pro</span>
+                                <span className="text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 border border-gray-200">DeepTrading AI 2.5 Pro</span>
                                 <span className="text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md bg-lime-100 text-lime-700 border border-lime-200 flex items-center gap-1">
                                     <Zap size={10} fill="currentColor" /> Online
                                 </span>
@@ -375,21 +465,30 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                 {/* Tabs & Input */}
                 <div className="flex flex-col gap-6 md:gap-8 relative z-10">
                      {/* Tabs */}
-                     <div className="flex p-1.5 bg-gray-100/80 rounded-2xl w-full sm:w-fit border border-gray-200/50">
-                        <button 
-                          onClick={() => setActiveInputTab('text')}
-                          className={`flex-1 sm:flex-none px-4 md:px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeInputTab === 'text' ? 'bg-white shadow-sm text-black ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          <Search size={16} strokeWidth={2.5} />
-                          代码诊断
-                        </button>
-                        <button 
-                          onClick={() => setActiveInputTab('image')}
-                          className={`flex-1 sm:flex-none px-4 md:px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeInputTab === 'image' ? 'bg-white shadow-sm text-black ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          <ImageIcon size={16} strokeWidth={2.5} />
-                          K线识图
-                        </button>
+                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                       <div className="flex p-1.5 bg-gray-100/80 rounded-2xl w-full sm:w-fit border border-gray-200/50">
+                          <button 
+                            onClick={() => setActiveInputTab('text')}
+                            className={`flex-1 sm:flex-none px-4 md:px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeInputTab === 'text' ? 'bg-white shadow-sm text-black ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            <Search size={16} strokeWidth={2.5} />
+                            代码诊断
+                          </button>
+                          <button 
+                            onClick={() => setActiveInputTab('image')}
+                            className={`flex-1 sm:flex-none px-4 md:px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeInputTab === 'image' ? 'bg-white shadow-sm text-black ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            <ImageIcon size={16} strokeWidth={2.5} />
+                            K线识图
+                          </button>
+                       </div>
+
+                       {activeInputTab === 'image' && (
+                         <div className="w-full sm:flex-1 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-4 py-3 flex items-center gap-3">
+                           <AlertTriangle size={18} className="text-amber-600" />
+                           <div className="text-xs md:text-sm leading-relaxed font-semibold text-amber-800/90">提示：K线识图请确保有股票代码，为了保证数据准确性，整体耗时大约（约 30s-50s）。</div>
+                         </div>
+                       )}
                      </div>
 
                      {/* Input Area */}
@@ -437,7 +536,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                             <div className="flex items-center gap-4 mt-5 px-2 animate-in fade-in slide-in-from-top-2 duration-500 overflow-x-auto pb-2 scrollbar-hide">
                                <div className="flex items-center gap-1.5 text-xs font-bold text-orange-500 shrink-0 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">
                                   <Flame size={14} className="fill-orange-500" />
-                                  热门标的
+                                  热门分析
                                </div>
                                <div className="flex gap-2 flex-nowrap">
                                   {trendingStocks.map((stock) => (
@@ -566,7 +665,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
             {showResult && (
                <div ref={resultRef} className="min-h-[400px]">
                   {isAnalyzing ? (
-                     <LoadingView />
+                     <LoadingView mode={activeInputTab} currentStep={currentStep} />
                   ) : invalidStockCode ? (
                      <div className="w-full py-24 flex flex-col items-center justify-center bg-white rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-amber-100 animate-in fade-in zoom-in duration-300">
                         <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6">

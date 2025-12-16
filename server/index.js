@@ -1044,6 +1044,13 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
     }
 
     const { strategyMode = 'K线识图策略', prompt = '' } = req.body;
+    const extractStockCode = (input) => {
+      if (!input || typeof input !== 'string') return null;
+      const code = input.replace(/[^0-9]/g, '').trim();
+      if (!code || code.length !== 6) return null;
+      if (/^(60|68|00|30|83|87|88|43|47)\d{4}$/.test(code)) return code;
+      return null;
+    };
     
     // 读取图片并转为 base64
     const imagePath = req.file.path;
@@ -1084,6 +1091,50 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       const parsedData = JSON.parse(jsonStr.trim());
       parsedData.strategyMode = strategyMode;
       parsedData.imageUrl = `/uploads/${req.file.filename}`; // 返回图片路径
+
+      // 严格校验：K线识图必须识别出合法股票代码，否则不继续（不查库、不返回 N/A）
+      const stockCodeFromImage = extractStockCode(parsedData.stockCode);
+      if (!stockCodeFromImage) {
+        console.log('   ⚠️ K线识图未识别出合法股票代码，已拒绝进入真实数据增强与合并');
+        return res.status(400).json({
+          error: '无法从K线图中识别出合法股票代码（6位数字）。请重新上传清晰截图，或切换到“代码诊断”手动输入。',
+          code: 'INVALID_STOCK_CODE'
+        });
+      }
+
+      console.log(`   🔍 已识别股票代码: ${stockCodeFromImage}，开始查询数据库真实数据...`);
+      const [stockDataWithIndicators, moneyFlowMonitor] = await Promise.all([
+        getStockDataWithIndicators(stockCodeFromImage),
+        getMoneyFlowMonitor(stockCodeFromImage)
+      ]);
+
+      if (moneyFlowMonitor) {
+        console.log('   💸 资金与情绪监控(最新):');
+        console.log(`      📅 trade_date: ${moneyFlowMonitor.tradeDate}`);
+        console.log(`      💰 3D净流入(亿元): ${moneyFlowMonitor.netInflow3d}`);
+        console.log(`      💰 5D净流入(亿元): ${moneyFlowMonitor.netInflow5d}`);
+        console.log(`      💰 20D净流入(亿元): ${moneyFlowMonitor.netInflow20d}`);
+        console.log(`      🙂 retail_sentiment_ratio(%): ${moneyFlowMonitor.retailSentimentRatio}`);
+      } else {
+        console.log('   💸 未查询到资金与情绪监控数据(a_stock_money_flow)');
+      }
+
+      if (stockDataWithIndicators) {
+        parsedData.realData = {
+          stockInfo: stockDataWithIndicators.stockInfo,
+          indicators: stockDataWithIndicators.indicators
+        };
+        parsedData.stockName = stockDataWithIndicators.stockInfo.name;
+        parsedData.stockCode = stockDataWithIndicators.stockInfo.symbol;
+      }
+
+      if (moneyFlowMonitor) {
+        parsedData.moneyFlowMonitor = moneyFlowMonitor;
+      }
+
+      if (!parsedData.newsAnalysis) {
+        parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
+      }
 
       console.log(`✅ K 线分析完成: ${parsedData.recommendation}`);
       return res.json(parsedData);

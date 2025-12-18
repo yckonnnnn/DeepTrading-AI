@@ -428,6 +428,27 @@ const VERIFICATION_CODE_SECRET = process.env.VERIFICATION_CODE_SECRET || JWT_SEC
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+let notificationsTableEnsured = false;
+const ensureNotificationsTable = async () => {
+  if (notificationsTableEnsured) return;
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS user_notifications (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id VARCHAR(64) NOT NULL,
+      type VARCHAR(32) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      body TEXT NULL,
+      data_json TEXT NULL,
+      is_read TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_user_notifications_user_id (user_id),
+      INDEX idx_user_notifications_user_read (user_id, is_read)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+  );
+  notificationsTableEnsured = true;
+};
+
 const getRequestIp = (req) => {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.length > 0) {
@@ -855,6 +876,180 @@ app.post('/api/billing/mock-pay', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('❌ mock-pay error:', error);
     return res.status(500).json({ error: '支付失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/admin/grant-subscription', requireAuth, async (req, res) => {
+  try {
+    const admin = await tryGetAuthUser(req);
+    if (!admin?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    if (admin.channel !== 1) {
+      return res.status(403).json({ error: '无权限', code: 'FORBIDDEN' });
+    }
+
+    const { identifier, plan_code, provider } = req.body || {};
+    const clean = typeof identifier === 'string' ? identifier.trim() : '';
+    if (!clean) {
+      return res.status(400).json({ error: 'identifier 不能为空', code: 'INVALID_IDENTIFIER' });
+    }
+    if (!plan_code || !['weekly', 'monthly', 'yearly'].includes(plan_code)) {
+      return res.status(400).json({ error: 'plan_code 不正确', code: 'INVALID_PLAN_CODE' });
+    }
+
+    const isEmail = emailRegex.test(clean);
+    const [uRows] = await pool.execute(
+      isEmail
+        ? 'SELECT id, user_id, username, email, channel FROM users WHERE email = ? LIMIT 1'
+        : 'SELECT id, user_id, username, email, channel FROM users WHERE username = ? LIMIT 1',
+      [clean]
+    );
+    if (!Array.isArray(uRows) || uRows.length === 0) {
+      return res.status(404).json({ error: '用户不存在', code: 'USER_NOT_FOUND' });
+    }
+
+    const target = uRows[0];
+    if (!target?.user_id) {
+      return res.status(400).json({ error: '目标用户无效', code: 'TARGET_INVALID' });
+    }
+    if (target.channel === 1) {
+      return res.status(400).json({ error: '无需为管理员开通', code: 'TARGET_IS_ADMIN' });
+    }
+
+    const now = new Date();
+    const periodStart = now;
+    const periodEnd = new Date(now);
+    if (plan_code === 'weekly') periodEnd.setDate(periodEnd.getDate() + 7);
+    if (plan_code === 'monthly') periodEnd.setMonth(periodEnd.getMonth() + 1);
+    if (plan_code === 'yearly') periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+
+    await pool.execute(
+      `UPDATE user_subscriptions
+       SET status = 'canceled', canceled_at = NOW(), ended_at = NOW()
+       WHERE user_id = ? AND status = 'active'`,
+      [target.user_id]
+    );
+
+    await pool.execute(
+      `INSERT INTO user_subscriptions
+        (user_id, status, plan_code, plan_name, started_at, current_period_start, current_period_end, provider, provider_order_id, created_at, updated_at)
+       VALUES (?, 'active', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        target.user_id,
+        plan_code,
+        plan_code === 'weekly' ? '周会员' : plan_code === 'monthly' ? '月会员' : '年会员',
+        now,
+        periodStart,
+        periodEnd,
+        provider || null,
+        `admin-${crypto.randomBytes(8).toString('hex')}`
+      ]
+    );
+
+    const sub = await getActiveSubscriptionForUser(target.user_id);
+    if (sub) {
+      await ensureProQuotaPeriod(target.user_id, sub);
+    }
+
+    await ensureNotificationsTable();
+    await pool.execute(
+      `INSERT INTO user_notifications (user_id, type, title, body, data_json, is_read)
+       VALUES (?, 'subscription', '会员已开通', ?, ?, 0)`,
+      [
+        target.user_id,
+        `已开通${plan_code === 'weekly' ? '周' : plan_code === 'monthly' ? '月' : '年'}会员`,
+        JSON.stringify({ plan_code })
+      ]
+    );
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ admin grant subscription error:', error);
+    return res.status(500).json({ error: '开通失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    await ensureNotificationsTable();
+
+    const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit, 10) || 50));
+    const [rows] = await pool.execute(
+      `SELECT id, type, title, body, data_json, is_read, created_at
+       FROM user_notifications
+       WHERE user_id = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+      [user.user_id, limit]
+    );
+
+    const items = (Array.isArray(rows) ? rows : []).map((r) => {
+      let data = null;
+      try {
+        data = r?.data_json ? JSON.parse(r.data_json) : null;
+      } catch {
+        data = null;
+      }
+      return {
+        id: Number(r.id),
+        type: r.type,
+        title: r.title,
+        body: r.body || '',
+        data,
+        read: Boolean(r.is_read),
+        createdAt: r.created_at
+      };
+    });
+
+    return res.json({ items });
+  } catch (error) {
+    console.error('❌ notifications list error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    await ensureNotificationsTable();
+
+    const id = parseInt(req.params?.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: 'id 不正确', code: 'INVALID_ID' });
+    }
+
+    await pool.execute(
+      'UPDATE user_notifications SET is_read = 1 WHERE id = ? AND user_id = ?',
+      [id, user.user_id]
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ notification read error:', error);
+    return res.status(500).json({ error: '操作失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    await ensureNotificationsTable();
+
+    await pool.execute('UPDATE user_notifications SET is_read = 1 WHERE user_id = ?', [user.user_id]);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ notifications read-all error:', error);
+    return res.status(500).json({ error: '操作失败', code: 'INTERNAL_ERROR' });
   }
 });
 

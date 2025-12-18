@@ -26,7 +26,7 @@ const ContactUs: React.FC<ContactUsProps> = ({ onVisitWebsite }) => {
                         <div>
                             <h3 className="font-bold text-gray-900">电子邮件</h3>
                             <p className="text-sm text-gray-500 font-medium mb-1">一般咨询与商务合作</p>
-                            <a href="mailto:contact@limefinance.ai" className="text-lime-600 font-bold hover:underline">contact@limefinance.ai</a>
+                            <a href="mailto:contact@limefinance.ai" className="text-lime-600 font-bold hover:underline">zackyckon@gmail.com</a>
                         </div>
                     </div>
 

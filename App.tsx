@@ -40,10 +40,23 @@ interface AppNotification {
   title: string;
   desc: string;
   time: string;
-  type: 'new' | 'maintenance' | 'report' | 'update';
+  type: 'new' | 'maintenance' | 'report' | 'update' | 'subscription';
   read: boolean;
   data?: { reportId: string };
 }
+
+const formatTimeAgo = (input: any) => {
+  const d = input ? new Date(input) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins <= 0) return '刚刚';
+  if (mins < 60) return `${mins}分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前`;
+};
 
 const MOCK_NOTIFICATIONS: AppNotification[] = [
   { id: 1, title: '新模型上线: Gemini 2.5 Pro Turbo', desc: '分析引擎已升级，响应速度提升 30%', time: '10分钟前', type: 'new', read: false },
@@ -80,6 +93,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       case 'new': return <Zap size={16} className="text-lime-600" />;
       case 'maintenance': return <AlertCircle size={16} className="text-orange-500" />;
       case 'report': return <FileText size={16} className="text-blue-500" />;
+      case 'subscription': return <Crown size={16} className="text-yellow-500" />;
       default: return <Megaphone size={16} className="text-gray-500" />;
     }
   };
@@ -156,13 +170,15 @@ interface UserProfileCardProps {
   isOpen: boolean;
   onClose: () => void;
   userTier: UserTier;
+  isAdmin: boolean;
   authUser: { user_id?: string | null; username?: string | null; email?: string | null } | null;
+  authQuota: any;
   onSubscribe: () => void;
   onSettings: () => void;
   onLogout: () => void;
 }
 
-const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, userTier, authUser, onSubscribe, onSettings, onLogout }) => {
+const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, userTier, isAdmin, authUser, authQuota, onSubscribe, onSettings, onLogout }) => {
   if (!isOpen) return null;
 
   const getTierStyle = () => {
@@ -179,6 +195,18 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, user
   const displayName = userTier === 'guest' ? '访客' : (authUser?.username || '用户');
   const displayEmail = userTier === 'guest' ? '' : (authUser?.email || '');
   const avatarSeed = userTier === 'guest' ? 'Guest' : (authUser?.username || 'User');
+
+  const quotaLimit = authQuota?.quotaLimit == null ? null : Number(authQuota.quotaLimit);
+  const usedSuccess = authQuota?.usedSuccess == null ? 0 : Number(authQuota.usedSuccess);
+  const isUnlimited = Boolean(isAdmin) || quotaLimit == null || (Number.isFinite(quotaLimit) && quotaLimit >= 999999999);
+  const safeUsed = Number.isFinite(usedSuccess) ? Math.max(0, usedSuccess) : 0;
+  const safeTotal = Number.isFinite(quotaLimit) ? Math.max(0, quotaLimit) : 0;
+  const usageText = userTier === 'guest'
+    ? '12 / 30'
+    : (isUnlimited ? '不限次数' : `${safeUsed} / ${safeTotal}`);
+  const usagePercent = userTier === 'guest'
+    ? 40
+    : (isUnlimited ? 100 : (safeTotal <= 0 ? 0 : Math.min(100, Math.max(0, Math.round((safeUsed / safeTotal) * 100)))));
 
   return (
     <div className="absolute top-14 right-0 w-[calc(100vw-2rem)] md:w-80 bg-white rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] border border-gray-100 z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
@@ -221,12 +249,13 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, user
          {/* Usage Stats */}
          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 mb-6">
             <div className="flex justify-between text-xs mb-2 font-bold">
-               <span className="text-gray-500">本月分析额度</span>
-               <span className="text-black">{userTier === 'pro' ? '无限' : '12 / 30'}</span>
+               <span className="text-gray-500">权益使用额度</span>
+               <span className="text-black">{usageText}</span>
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                <div 
-                 className={`h-full rounded-full ${userTier === 'pro' ? 'bg-gradient-to-r from-lime-300 to-lime-500 w-full' : 'bg-black w-[40%]'}`}
+                 className={`h-full rounded-full ${userTier !== 'guest' && isUnlimited ? 'bg-gradient-to-r from-lime-300 to-lime-500' : 'bg-black'}`}
+                 style={{ width: `${usagePercent}%` }}
                ></div>
             </div>
             {userTier !== 'pro' && (
@@ -277,6 +306,7 @@ interface HeaderProps {
   setUserTier: (tier: UserTier) => void;
   isAdmin: boolean;
   authUser: { user_id?: string | null; username?: string | null; email?: string | null } | null;
+  authQuota: any;
   onSubscribe: () => void;
   onSettings: () => void;
   onVisitWebsite: () => void;
@@ -292,6 +322,7 @@ const Header = ({
   setUserTier, 
   isAdmin,
   authUser,
+  authQuota,
   onSubscribe, 
   onSettings,
   onVisitWebsite,
@@ -405,7 +436,9 @@ const Header = ({
               isOpen={showProfile} 
               onClose={() => setShowProfile(false)}
               userTier={userTier}
+              isAdmin={isAdmin}
               authUser={authUser}
+              authQuota={authQuota}
               onSubscribe={onSubscribe}
               onSettings={onSettings}
               onLogout={onLogout}
@@ -449,6 +482,7 @@ const App: React.FC = () => {
       setAuthUser(null);
       setAuthSubscription(null);
       setAuthQuota(null);
+      setNotifications(MOCK_NOTIFICATIONS);
       return;
     }
 
@@ -466,6 +500,7 @@ const App: React.FC = () => {
             setAuthSubscription(null);
             setAuthQuota(null);
             setHistory([]);
+            setNotifications(MOCK_NOTIFICATIONS);
             localStorage.removeItem('auth_channel');
           }
           return;
@@ -508,6 +543,32 @@ const App: React.FC = () => {
             setHistory([]);
           }
         }
+
+        try {
+          const nResp = await fetch(`${API_BASE_URL}/api/notifications?limit=50`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const nData = await nResp.json().catch(() => ({}));
+          if (!cancelled && nResp.ok) {
+            const items = Array.isArray(nData?.items) ? nData.items : [];
+            const mapped: AppNotification[] = items.map((it: any) => ({
+              id: Number(it?.id),
+              title: String(it?.title || ''),
+              desc: String(it?.body || ''),
+              time: formatTimeAgo(it?.createdAt),
+              type: (it?.type === 'subscription' ? 'subscription' : (it?.type as any)) || 'update',
+              read: Boolean(it?.read),
+              data: it?.data?.reportId ? { reportId: String(it.data.reportId) } : undefined
+            }));
+            setNotifications((prev) => {
+              const remoteIds = new Set(mapped.map((m) => m.id));
+              const keepLocal = prev.filter((p) => !remoteIds.has(p.id));
+              return [...mapped, ...keepLocal];
+            });
+          }
+        } catch {
+          // ignore notifications fetch failure
+        }
       } catch {
         if (!cancelled) {
           setIsAdmin(false);
@@ -515,6 +576,7 @@ const App: React.FC = () => {
           setAuthSubscription(null);
           setAuthQuota(null);
           setHistory([]);
+          setNotifications(MOCK_NOTIFICATIONS);
         }
       }
     })();
@@ -559,6 +621,7 @@ const App: React.FC = () => {
     setAuthSubscription(null);
     setAuthQuota(null);
     setHistory([]);
+    setNotifications(MOCK_NOTIFICATIONS);
     setCurrentView('landing');
     setActiveTab('dashboard'); // Reset tab
   };
@@ -584,6 +647,17 @@ const App: React.FC = () => {
   const handleNotificationClick = (notification: AppNotification) => {
      // Mark as read
      setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
+
+     if (userTier !== 'guest') {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const API_BASE_URL = 'http://localhost:3001';
+          fetch(`${API_BASE_URL}/api/notifications/${notification.id}/read`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          }).catch(() => {});
+        }
+     }
      
      // Navigate logic
      if (notification.type === 'report' && notification.data?.reportId) {
@@ -594,6 +668,17 @@ const App: React.FC = () => {
 
   const handleMarkAllRead = () => {
      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+
+     if (userTier !== 'guest') {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const API_BASE_URL = 'http://localhost:3001';
+          fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          }).catch(() => {});
+        }
+     }
   };
 
   const handleSubscribe = () => {
@@ -671,7 +756,7 @@ const App: React.FC = () => {
           />
         );
       case 'subscription':
-        return <Subscription onSubscriptionChanged={() => setAuthRefreshNonce((v) => v + 1)} />;
+        return <Subscription isAdmin={isAdmin} onSubscriptionChanged={() => setAuthRefreshNonce((v) => v + 1)} />;
       case 'settings':
         return <Settings authUser={authUser} />;
       case 'announcements':
@@ -722,7 +807,8 @@ const App: React.FC = () => {
           setUserTier={setUserTier} 
           isAdmin={isAdmin}
           authUser={authUser}
-          onSubscribe={handleSubscribe}
+          authQuota={authQuota}
+          onSubscribe={handleSubscribe} 
           onSettings={handleSettings}
           onVisitWebsite={() => setCurrentView('landing')}
           notifications={notifications}

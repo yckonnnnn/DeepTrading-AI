@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Check, Sparkles, Zap, Shield, Crown, X, CreditCard, Smartphone } from 'lucide-react';
+import { Check, Sparkles, Zap, Shield, Crown, X } from 'lucide-react';
 
 const plans = [
   {
@@ -66,54 +66,167 @@ const Toast = ({ message, onClose }: { message: string; onClose: () => void }) =
   </div>
 );
 
+const AdminGrantModal = ({
+  isOpen,
+  onClose,
+  defaultPlan,
+  onConfirm
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultPlan: 'weekly' | 'monthly' | 'yearly' | null;
+  onConfirm: (payload: { identifier: string; planCode: 'weekly' | 'monthly' | 'yearly'; provider: 'alipay' | 'wechat' | 'card' }) => Promise<boolean>;
+}) => {
+  const [identifier, setIdentifier] = useState('');
+  const [planCode, setPlanCode] = useState<'weekly' | 'monthly' | 'yearly'>(defaultPlan || 'monthly');
+  const [provider, setProvider] = useState<'alipay' | 'wechat' | 'card'>('alipay');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const planLabel = planCode === 'weekly' ? '周会员' : planCode === 'monthly' ? '月会员' : '年会员';
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPlanCode(defaultPlan || 'monthly');
+  }, [defaultPlan, isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleConfirm = async () => {
+    const clean = identifier.trim();
+    if (!clean) return;
+    setIsProcessing(true);
+    try {
+      const ok = await onConfirm({ identifier: clean, planCode, provider });
+      if (ok) onClose();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose}></div>
+      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40">
+        <div className="bg-gradient-to-b from-gray-50 to-white p-8 border-b border-gray-100 flex justify-between items-start">
+          <div>
+            <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">临时开通会员</h3>
+            <p className="text-sm text-gray-500 font-semibold mt-1">仅管理员可用 · 直接写入订阅数据</p>
+            <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-black text-white text-xs font-extrabold">
+              本次开通：{planLabel}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2.5 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors shadow-sm border border-gray-100">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-8 space-y-6">
+          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+            <div className="text-xs font-bold text-gray-500 mb-2">用户名或邮箱</div>
+            <input
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="输入用户名或邮箱"
+              className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime-300"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-sm font-extrabold text-gray-900">选择支付方式</div>
+
+            <button
+              type="button"
+              onClick={() => setProvider('alipay')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${provider === 'alipay' ? 'border-blue-500 bg-blue-50 shadow-[0_10px_30px_rgba(59,130,246,0.12)]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black flex items-center justify-center">支</div>
+                <div className="text-base font-extrabold text-gray-900">支付宝</div>
+              </div>
+              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${provider === 'alipay' ? 'border-blue-500' : 'border-gray-300'}`}>
+                {provider === 'alipay' ? <div className="w-3.5 h-3.5 rounded-full bg-blue-500" /> : null}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProvider('wechat')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${provider === 'wechat' ? 'border-blue-500 bg-blue-50 shadow-[0_10px_30px_rgba(59,130,246,0.12)]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-green-500 text-white font-black flex items-center justify-center">微</div>
+                <div className="text-base font-extrabold text-gray-900">微信支付</div>
+              </div>
+              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${provider === 'wechat' ? 'border-blue-500' : 'border-gray-300'}`}>
+                {provider === 'wechat' ? <div className="w-3.5 h-3.5 rounded-full bg-blue-500" /> : null}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProvider('card')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${provider === 'card' ? 'border-blue-500 bg-blue-50 shadow-[0_10px_30px_rgba(59,130,246,0.12)]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-gray-900 text-white font-black flex items-center justify-center">卡</div>
+                <div className="text-base font-extrabold text-gray-900">银行卡</div>
+              </div>
+              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${provider === 'card' ? 'border-blue-500' : 'border-gray-300'}`}>
+                {provider === 'card' ? <div className="w-3.5 h-3.5 rounded-full bg-blue-500" /> : null}
+              </div>
+            </button>
+          </div>
+
+          <button
+            onClick={handleConfirm}
+            disabled={isProcessing || !identifier.trim()}
+            className={`w-full py-4 rounded-2xl font-extrabold text-base transition-all shadow-xl ${
+              isProcessing || !identifier.trim() ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' : 'bg-black text-white hover:bg-gray-800 shadow-black/15'
+            }`}
+          >
+            {isProcessing ? '开通中...' : '确认开通'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PaymentModal = ({ 
     isOpen, 
     onClose, 
     plan, 
-    onPaymentComplete 
+    onPaymentComplete: _onPaymentComplete,
+    showAdminGrant,
+    onAdminGrant
 }: { 
     isOpen: boolean; 
     onClose: () => void; 
     plan: any; 
     onPaymentComplete: (planCode: string, provider: 'alipay' | 'wechat' | 'card') => Promise<boolean>;
+    showAdminGrant: boolean;
+    onAdminGrant: () => void;
 }) => {
-    const [selectedMethod, setSelectedMethod] = useState<'alipay' | 'wechat' | 'card'>('alipay');
-    const [isProcessing, setIsProcessing] = useState(false);
-
     if (!isOpen || !plan) return null;
-
-    const handlePayment = async () => {
-        if (!plan?.id) return;
-        setIsProcessing(true);
-        try {
-            const ok = await onPaymentComplete(String(plan.id), selectedMethod);
-            if (ok) {
-                onClose();
-            }
-        } finally {
-            setIsProcessing(false);
-        }
-    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={onClose}></div>
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40">
                 {/* Header */}
-                <div className="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
+                <div className="bg-gradient-to-b from-gray-50 to-white p-8 border-b border-gray-100 flex justify-between items-start">
                     <div>
-                        <h3 className="text-xl font-bold text-gray-900">确认订阅</h3>
-                        <p className="text-sm text-gray-500 font-medium">升级您的投资体验</p>
+                        <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">支付功能正在开发中</h3>
+                        <p className="text-sm text-gray-500 font-semibold mt-1">如有订阅需求，请联系邮箱</p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors">
+                    <button onClick={onClose} className="p-2.5 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors shadow-sm border border-gray-100">
                         <X size={20} />
                     </button>
                 </div>
 
                 {/* Body */}
-                <div className="p-6">
-                    {/* Plan Summary */}
-                    <div className="flex justify-between items-center mb-6 p-4 bg-lime-50 rounded-2xl border border-lime-100">
+                <div className="p-8">
+                    <div className="flex justify-between items-center mb-6 p-5 bg-lime-50 rounded-2xl border border-lime-100">
                         <div>
                             <div className="font-bold text-gray-900 text-lg">{plan.name}</div>
                             <div className="text-xs text-lime-700 font-bold">{plan.description}</div>
@@ -124,49 +237,28 @@ const PaymentModal = ({
                         </div>
                     </div>
 
-                    <h4 className="font-bold text-gray-900 mb-4 text-sm">选择支付方式</h4>
-                    <div className="space-y-3 mb-8">
-                        <label className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedMethod === 'alipay' ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-[#1677FF] flex items-center justify-center text-white font-bold text-xs">支</div>
-                                <span className="font-bold text-gray-700">支付宝</span>
-                            </div>
-                            <input type="radio" name="payment" className="w-5 h-5 accent-blue-500" checked={selectedMethod === 'alipay'} onChange={() => setSelectedMethod('alipay')} />
-                        </label>
-
-                        <label className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedMethod === 'wechat' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-[#07C160] flex items-center justify-center text-white font-bold text-xs">微</div>
-                                <span className="font-bold text-gray-700">微信支付</span>
-                            </div>
-                            <input type="radio" name="payment" className="w-5 h-5 accent-emerald-500" checked={selectedMethod === 'wechat'} onChange={() => setSelectedMethod('wechat')} />
-                        </label>
-
-                        <label className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedMethod === 'card' ? 'border-purple-500 bg-purple-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white">
-                                    <CreditCard size={14} />
-                                </div>
-                                <span className="font-bold text-gray-700">银行卡</span>
-                            </div>
-                            <input type="radio" name="payment" className="w-5 h-5 accent-purple-500" checked={selectedMethod === 'card'} onChange={() => setSelectedMethod('card')} />
-                        </label>
+                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 mb-6">
+                        <div className="text-sm text-gray-700 font-bold leading-relaxed">
+                            支付功能正在开发中，如有订阅需求，请联系邮箱：
+                            <a href="mailto:zackyckon@gmail.com" className="text-lime-600 hover:underline ml-1">zackyckon@gmail.com</a>
+                        </div>
                     </div>
 
-                    <button 
-                        onClick={handlePayment}
-                        disabled={isProcessing}
-                        className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                    <button
+                        onClick={onClose}
+                        className="w-full py-4 bg-black text-white rounded-2xl font-extrabold text-base hover:bg-gray-800 transition-all shadow-xl shadow-black/15"
                     >
-                        {isProcessing ? (
-                            <>
-                               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                               处理中...
-                            </>
-                        ) : (
-                            `确认支付 ¥${plan.price}`
-                        )}
+                        我知道了
                     </button>
+
+                    {showAdminGrant && (
+                      <button
+                        onClick={onAdminGrant}
+                        className="w-full mt-3 py-3.5 bg-white text-gray-900 rounded-2xl font-extrabold text-sm border border-gray-200 hover:bg-gray-50 transition-colors"
+                      >
+                        临时开通会员
+                      </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -174,12 +266,14 @@ const PaymentModal = ({
 };
 
 interface SubscriptionProps {
+  isAdmin?: boolean;
   onSubscriptionChanged?: () => void;
 }
 
-const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) => {
+const Subscription: React.FC<SubscriptionProps> = ({ isAdmin = false, onSubscriptionChanged }) => {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [showAdminGrant, setShowAdminGrant] = useState(false);
 
   const API_BASE_URL = 'http://localhost:3001';
 
@@ -191,7 +285,7 @@ const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) =>
       }, 3000);
   };
 
-  const handlePaymentComplete = async (planCode: string, provider: 'alipay' | 'wechat' | 'card') => {
+  const mockPaymentComplete = async (planCode: string, provider: 'alipay' | 'wechat' | 'card') => {
       const token = localStorage.getItem('auth_token');
       if (!token) {
           showToast('请先登录后再订阅');
@@ -220,6 +314,41 @@ const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) =>
       }
   };
 
+  const handlePaymentComplete = async (_planCode: string, _provider: 'alipay' | 'wechat' | 'card') => {
+      showToast('支付功能正在开发中，如有订阅需求，请联系邮箱：zackyckon@gmail.com');
+      onSubscriptionChanged?.();
+      return false;
+  };
+
+  const handleAdminGrant = async (payload: { identifier: string; planCode: 'weekly' | 'monthly' | 'yearly'; provider: 'alipay' | 'wechat' | 'card' }) => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+          showToast('请先登录管理员账号');
+          return false;
+      }
+      try {
+          const resp = await fetch(`${API_BASE_URL}/api/admin/grant-subscription`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({ identifier: payload.identifier, plan_code: payload.planCode, provider: payload.provider })
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+              showToast(data?.error || '开通失败');
+              return false;
+          }
+          showToast('已成功开通会员');
+          onSubscriptionChanged?.();
+          return true;
+      } catch {
+          showToast('开通失败');
+          return false;
+      }
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-10">
       {toastMsg && <Toast message={toastMsg} onClose={() => setToastMsg(null)} />}
@@ -229,6 +358,15 @@ const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) =>
         onClose={() => setSelectedPlan(null)} 
         plan={selectedPlan} 
         onPaymentComplete={handlePaymentComplete}
+        showAdminGrant={Boolean(isAdmin && selectedPlan)}
+        onAdminGrant={() => setShowAdminGrant(true)}
+      />
+
+      <AdminGrantModal
+        isOpen={showAdminGrant}
+        onClose={() => setShowAdminGrant(false)}
+        defaultPlan={(selectedPlan?.id === 'weekly' || selectedPlan?.id === 'monthly' || selectedPlan?.id === 'yearly') ? selectedPlan.id : null}
+        onConfirm={handleAdminGrant}
       />
 
       <div className="text-center mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -316,12 +454,12 @@ const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) =>
                <Shield className="text-emerald-500" />
             </div>
             <div>
-               <h4 className="font-bold text-gray-900">100% 安全支付</h4>
-               <p className="text-sm text-gray-500">支持微信支付、支付宝，7天无理由退款保障</p>
+               <h4 className="font-bold text-gray-900">支付功能正在开发中</h4>
+               <p className="text-sm text-gray-500">如有订阅需求，请联系邮箱：zackyckon@gmail.com</p>
             </div>
          </div>
          <div className="text-sm text-gray-400 font-medium">
-            有问题？ <span className="text-black underline cursor-pointer hover:text-lime-600">联系客服</span>
+            有问题？ <a href="mailto:zackyckon@gmail.com" className="text-black underline cursor-pointer hover:text-lime-600">联系客服</a>
          </div>
       </div>
     </div>

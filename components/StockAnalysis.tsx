@@ -202,13 +202,15 @@ interface StockAnalysisProps {
   history: AIAnalysisReport[];
   userTier: UserTier;
   onSubscribe: () => void;
+  onRequireLogin: () => void;
 }
 
 const StockAnalysis: React.FC<StockAnalysisProps> = ({ 
   onAnalysisComplete, 
   history, 
   userTier, 
-  onSubscribe 
+  onSubscribe,
+  onRequireLogin
 }) => {
   const [activeInputTab, setActiveInputTab] = useState<'text' | 'image'>('text');
   const [activeStrategy, setActiveStrategy] = useState('technical');
@@ -220,6 +222,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   const [error, setError] = useState<boolean>(false);
   const [invalidStockCode, setInvalidStockCode] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisReport | null>(null);
+  const [showLoginRequired, setShowLoginRequired] = useState(false);
   
   // Search Suggestions State
   const [suggestions, setSuggestions] = useState<{code: string, name: string}[]>([]);
@@ -296,6 +299,11 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   };
 
   const handleAnalyze = async () => {
+    if (userTier === 'guest') {
+        setShowLoginRequired(true);
+        return;
+    }
+
     if (isLimitReached) {
         onSubscribe();
         return;
@@ -400,6 +408,55 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
 
   return (
     <div className="h-full flex flex-col pt-2 pb-10">
+      {showLoginRequired && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowLoginRequired(false)}
+          ></div>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-black rounded-2xl flex items-center justify-center">
+                  <Lock size={18} className="text-lime-300" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">登录后才能使用分析功能</h3>
+                  <p className="text-sm text-gray-500 font-medium">游客模式仅可浏览，分析功能已上锁</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLoginRequired(false)}
+                className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    setShowLoginRequired(false);
+                    onRequireLogin();
+                  }}
+                  className="w-full py-3 rounded-2xl font-bold text-base flex items-center justify-center gap-2 bg-black text-white hover:bg-gray-800 transition-colors"
+                >
+                  去登录
+                  <ChevronRight size={18} className="text-lime-300" />
+                </button>
+                <button
+                  onClick={() => setShowLoginRequired(false)}
+                  className="w-full py-3 rounded-2xl font-bold text-base bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  先看看
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col xl:flex-row gap-8 items-start">
         
         {/* Main Column (Left) */}

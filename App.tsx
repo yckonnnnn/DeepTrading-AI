@@ -629,6 +629,7 @@ const App: React.FC = () => {
             history={history} 
             userTier={userTier}
             onSubscribe={handleSubscribe}
+            onRequireLogin={() => setCurrentView('login')}
           />
         );
       case 'history':

@@ -758,7 +758,7 @@ const App: React.FC = () => {
       case 'subscription':
         return <Subscription isAdmin={isAdmin} onSubscriptionChanged={() => setAuthRefreshNonce((v) => v + 1)} />;
       case 'settings':
-        return <Settings authUser={authUser} />;
+        return <Settings authUser={authUser} onProfileUpdated={() => setAuthRefreshNonce((v) => v + 1)} />;
       case 'announcements':
         return <Announcements />;
       case 'featured':

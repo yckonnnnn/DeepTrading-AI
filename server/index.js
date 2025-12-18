@@ -517,6 +517,31 @@ async function sendAliyunVerifyEmail(toEmail, verifyCode) {
   return client.request('SingleSendMail', params, { method: 'POST' });
 }
 
+async function sendAliyunResetPasswordEmail(toEmail, verifyCode) {
+  if (!DM_ACCESS_KEY_ID || !DM_ACCESS_KEY_SECRET || !DM_ACCOUNT_NAME) {
+    throw new Error('Aliyun DirectMail env missing');
+  }
+  const RPCClient = popCore.RPCClient;
+  const client = new RPCClient({
+    accessKeyId: DM_ACCESS_KEY_ID,
+    accessKeySecret: DM_ACCESS_KEY_SECRET,
+    endpoint: 'https://dm.aliyuncs.com',
+    apiVersion: '2015-11-23'
+  });
+
+  const params = {
+    AccountName: DM_ACCOUNT_NAME,
+    FromAlias: DM_FROM_ALIAS,
+    AddressType: 1,
+    ToAddress: toEmail,
+    Subject: '【deeptrading】找回密码验证码',
+    TextBody: `您的找回密码验证码是：${verifyCode}，5分钟内有效，请及时填写。`,
+    ReplyToAddress: 'false'
+  };
+
+  return client.request('SingleSendMail', params, { method: 'POST' });
+}
+
 // ==================== Auth APIs ====================
 
 app.post('/api/auth/send-code', async (req, res) => {
@@ -593,6 +618,148 @@ app.post('/api/auth/send-code', async (req, res) => {
   } catch (error) {
     console.error('❌ send-code error:', error);
     return res.status(500).json({ error: '发送失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/auth/send-reset-code', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !emailRegex.test(email)) {
+      return res.status(400).json({ error: '邮箱格式不正确', code: 'INVALID_EMAIL' });
+    }
+
+    if (!DM_ACCESS_KEY_ID || !DM_ACCESS_KEY_SECRET || !DM_ACCOUNT_NAME) {
+      return res.status(500).json({ error: '邮件服务未配置', code: 'EMAIL_CONFIG_MISSING' });
+    }
+
+    const [userRows] = await pool.execute('SELECT user_id FROM users WHERE email = ? LIMIT 1', [email]);
+    const userId = Array.isArray(userRows) && userRows.length > 0 ? (userRows[0]?.user_id || null) : null;
+    if (!userId) {
+      return res.json({ ok: true, expiresInSeconds: 300 });
+    }
+
+    const purpose = 'reset_password';
+    const [recentRows] = await pool.execute(
+      'SELECT id, created_at FROM email_verification_codes WHERE email = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
+      [email, purpose]
+    );
+
+    if (Array.isArray(recentRows) && recentRows.length > 0) {
+      const lastCreatedAt = new Date(recentRows[0].created_at).getTime();
+      const now = Date.now();
+      const diffSeconds = Math.floor((now - lastCreatedAt) / 1000);
+      if (diffSeconds < 60) {
+        return res.status(429).json({
+          error: '发送太频繁，请稍后再试',
+          code: 'TOO_MANY_REQUESTS',
+          retryAfterSeconds: 60 - diffSeconds
+        });
+      }
+    }
+
+    const verifyCode = String(Math.floor(100000 + Math.random() * 900000));
+    const codeHash = hashVerificationCode(verifyCode);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const requestIp = getRequestIp(req);
+
+    const [insertResult] = await pool.execute(
+      'INSERT INTO email_verification_codes (user_id, email, purpose, code_hash, expires_at, request_ip) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, email, purpose, codeHash, expiresAt, requestIp]
+    );
+
+    try {
+      await sendAliyunResetPasswordEmail(email, verifyCode);
+    } catch (e) {
+      if (insertResult?.insertId) {
+        await pool.execute('DELETE FROM email_verification_codes WHERE id = ?', [insertResult.insertId]);
+      }
+      const details = {
+        name: e?.name,
+        message: e?.message,
+        code: e?.code,
+        requestId: e?.data?.RequestId || e?.RequestId,
+        aliyunCode: e?.data?.Code,
+        aliyunMessage: e?.data?.Message
+      };
+      console.error('❌ Aliyun DirectMail reset password mail failed:', details);
+      return res.status(500).json({ error: '验证码发送失败', code: 'EMAIL_SEND_FAILED', details });
+    }
+
+    return res.json({ ok: true, expiresInSeconds: 300 });
+  } catch (error) {
+    console.error('❌ send-reset-code error:', error);
+    return res.status(500).json({ error: '发送失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  let connection;
+  try {
+    const { email, code, newPassword } = req.body || {};
+    if (!email || typeof email !== 'string' || !emailRegex.test(email)) {
+      return res.status(400).json({ error: '邮箱格式不正确', code: 'INVALID_EMAIL' });
+    }
+    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: '验证码不正确', code: 'INVALID_CODE' });
+    }
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: '密码至少6位', code: 'INVALID_PASSWORD' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [userRows] = await connection.execute('SELECT id, user_id, status FROM users WHERE email = ? LIMIT 1', [email]);
+    if (!Array.isArray(userRows) || userRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码无效', code: 'INVALID_CODE' });
+    }
+    const userRow = userRows[0];
+    if (userRow.status !== 'normal') {
+      await connection.rollback();
+      return res.status(403).json({ error: '账号已被禁用', code: 'ACCOUNT_DISABLED' });
+    }
+
+    const purpose = 'reset_password';
+    const [codeRows] = await connection.execute(
+      'SELECT id, code_hash, expires_at, used_at FROM email_verification_codes WHERE email = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
+      [email, purpose]
+    );
+    if (!Array.isArray(codeRows) || codeRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码无效', code: 'INVALID_CODE' });
+    }
+    const latest = codeRows[0];
+    if (latest.used_at) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码已使用', code: 'CODE_USED' });
+    }
+    if (new Date(latest.expires_at).getTime() < Date.now()) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码已过期', code: 'CODE_EXPIRED' });
+    }
+    const inputHash = hashVerificationCode(code);
+    if (inputHash !== latest.code_hash) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码错误', code: 'INVALID_CODE' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await connection.execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [passwordHash, userRow.id]);
+    await connection.execute('UPDATE email_verification_codes SET used_at = NOW(), user_id = ? WHERE id = ?', [userRow.user_id, latest.id]);
+
+    await connection.commit();
+    return res.json({ ok: true });
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch {}
+    }
+    console.error('❌ reset-password error:', error);
+    return res.status(500).json({ error: '重置失败', code: 'INTERNAL_ERROR' });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -823,6 +990,72 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   }
 });
 
+app.put('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth?.sub;
+    const { username, email } = req.body || {};
+    const cleanUsername = typeof username === 'string' ? username.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim() : '';
+
+    if (!cleanUsername || cleanUsername.length < 2) {
+      return res.status(400).json({ error: '用户名不正确', code: 'INVALID_USERNAME' });
+    }
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: '邮箱格式不正确', code: 'INVALID_EMAIL' });
+    }
+
+    const [existing] = await pool.execute(
+      'SELECT id FROM users WHERE (email = ? OR username = ?) AND id <> ? LIMIT 1',
+      [cleanEmail, cleanUsername, userId]
+    );
+    if (Array.isArray(existing) && existing.length > 0) {
+      return res.status(409).json({ error: '邮箱或用户名已被占用', code: 'DUPLICATE' });
+    }
+
+    await pool.execute('UPDATE users SET username = ?, email = ?, updated_at = NOW() WHERE id = ?', [cleanUsername, cleanEmail, userId]);
+    const [rows] = await pool.execute('SELECT id, user_id, username, email, status, channel, last_login_at, created_at, updated_at FROM users WHERE id = ? LIMIT 1', [userId]);
+    const user = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    return res.json({ ok: true, user });
+  } catch (error) {
+    console.error('❌ update profile error:', error);
+    return res.status(500).json({ error: '更新失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.put('/api/user/change-password', requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth?.sub;
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || typeof currentPassword !== 'string') {
+      return res.status(400).json({ error: '请输入当前密码', code: 'INVALID_PASSWORD' });
+    }
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: '新密码至少6位', code: 'INVALID_NEW_PASSWORD' });
+    }
+
+    const [rows] = await pool.execute('SELECT id, password_hash, status FROM users WHERE id = ? LIMIT 1', [userId]);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在', code: 'USER_NOT_FOUND' });
+    }
+    const user = rows[0];
+    if (user.status !== 'normal') {
+      return res.status(403).json({ error: '账号已被禁用', code: 'ACCOUNT_DISABLED' });
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: '当前密码错误', code: 'INVALID_CREDENTIALS' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [passwordHash, userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ change password error:', error);
+    return res.status(500).json({ error: '更新失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
 app.post('/api/billing/mock-pay', requireAuth, async (req, res) => {
   try {
     const user = await tryGetAuthUser(req);
@@ -978,14 +1211,15 @@ app.get('/api/notifications', requireAuth, async (req, res) => {
     }
     await ensureNotificationsTable();
 
-    const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit, 10) || 50));
+    const limitRaw = parseInt(req.query?.limit, 10);
+    const limit = Math.min(100, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 50));
     const [rows] = await pool.execute(
       `SELECT id, type, title, body, data_json, is_read, created_at
        FROM user_notifications
        WHERE user_id = ?
        ORDER BY id DESC
-       LIMIT ?`,
-      [user.user_id, limit]
+       LIMIT ${limit}`,
+      [user.user_id]
     );
 
     const items = (Array.isArray(rows) ? rows : []).map((r) => {

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   User, 
   Lock, 
@@ -19,11 +19,125 @@ import {
 
 interface SettingsProps {
   authUser: { username?: string | null; email?: string | null } | null;
+  onProfileUpdated: () => void;
 }
 
-const Settings = ({ authUser }: SettingsProps) => {
+const Settings = ({ authUser, onProfileUpdated }: SettingsProps) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences'>('profile');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [username, setUsername] = useState(authUser?.username || '');
+  const [email, setEmail] = useState(authUser?.email || '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  const API_BASE_URL = 'http://localhost:3001';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  useEffect(() => {
+    setUsername(authUser?.username || '');
+    setEmail(authUser?.email || '');
+  }, [authUser?.username, authUser?.email]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  const handleSaveProfile = async () => {
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim();
+    if (cleanUsername.length < 2) {
+      setToast({ type: 'error', message: '用户名至少 2 个字符' });
+      return;
+    }
+    if (!emailRegex.test(cleanEmail)) {
+      setToast({ type: 'error', message: '请输入正确的邮箱地址' });
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setToast({ type: 'error', message: '请先登录' });
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/user/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ username: cleanUsername, email: cleanEmail })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setToast({ type: 'error', message: data?.error || '保存失败' });
+        return;
+      }
+      setToast({ type: 'success', message: '已保存' });
+      onProfileUpdated();
+    } catch {
+      setToast({ type: 'error', message: '保存失败' });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword) {
+      setToast({ type: 'error', message: '请输入当前密码' });
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setToast({ type: 'error', message: '新密码至少 6 位' });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setToast({ type: 'error', message: '两次输入的新密码不一致' });
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setToast({ type: 'error', message: '请先登录' });
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/user/change-password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setToast({ type: 'error', message: data?.error || '更新失败' });
+        return;
+      }
+      setToast({ type: 'success', message: '密码已更新' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      onProfileUpdated();
+    } catch {
+      setToast({ type: 'error', message: '更新失败' });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   const displayName = authUser?.username || '用户';
   const displayEmail = authUser?.email || '';
@@ -64,13 +178,13 @@ const Settings = ({ authUser }: SettingsProps) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">用户名</label>
-                      <input type="text" defaultValue={displayName} className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                      <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                    </div>
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">电子邮箱</label>
                       <div className="relative">
                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                         <input type="email" defaultValue={displayEmail} className="w-full p-4 pl-12 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 pl-12 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                       </div>
                    </div>
                    <div className="space-y-2">
@@ -87,7 +201,7 @@ const Settings = ({ authUser }: SettingsProps) => {
                 </div>
                 
                 <div className="mt-8 flex justify-end">
-                   <button className="flex items-center gap-2 px-8 py-3 bg-lime-400 text-black rounded-xl font-bold hover:bg-lime-500 transition-colors shadow-lg shadow-lime-200">
+                   <button onClick={handleSaveProfile} disabled={savingProfile} className={`flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-lime-200 ${savingProfile ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-lime-400 text-black hover:bg-lime-500'}`}>
                       <Save size={18} /> 保存修改
                    </button>
                 </div>
@@ -105,16 +219,19 @@ const Settings = ({ authUser }: SettingsProps) => {
                 <div className="space-y-6 max-w-lg">
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">当前密码</label>
-                      <input type="password" placeholder="••••••••" className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                      <input value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} type="password" placeholder="••••••••" className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                    </div>
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">新密码</label>
                       <div className="relative">
                         <input 
                            type={showPassword ? "text" : "password"} 
+                           value={newPassword}
+                           onChange={(e) => setNewPassword(e.target.value)}
                            className="w-full p-4 pr-12 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" 
                         />
                         <button 
+                           type="button"
                            onClick={() => setShowPassword(!showPassword)}
                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         >
@@ -124,10 +241,10 @@ const Settings = ({ authUser }: SettingsProps) => {
                    </div>
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">确认新密码</label>
-                      <input type="password" className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                      <input value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} type="password" className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                    </div>
-                   <button className="w-full py-4 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg shadow-black/10">
-                      更新密码
+                   <button onClick={handleChangePassword} disabled={changingPassword} className={`w-full py-4 rounded-xl font-bold transition-colors shadow-lg ${changingPassword ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-black text-white hover:bg-gray-800 shadow-black/10'}`}>
+                      {changingPassword ? '更新中...' : '更新密码'}
                    </button>
                 </div>
              </div>
@@ -218,6 +335,11 @@ const Settings = ({ authUser }: SettingsProps) => {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-8 pb-10">
+       {toast && (
+         <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.18)] font-bold text-sm border ${toast.type === 'success' ? 'bg-lime-500 text-black border-lime-300' : 'bg-black text-white border-gray-800'}`}>
+           {toast.message}
+         </div>
+       )}
        {/* Settings Sidebar */}
        <div className="w-full md:w-64 flex-shrink-0">
           <div className="bg-white rounded-[2rem] p-4 shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-gray-100 sticky top-4">

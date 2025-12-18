@@ -9,7 +9,8 @@ import {
   ChevronLeft,
   Sparkles,
   TrendingUp,
-  CheckCircle2
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import Logo from './Logo';
 
@@ -42,6 +43,16 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetIsSendingCode, setResetIsSendingCode] = useState(false);
+  const [resetCooldownSeconds, setResetCooldownSeconds] = useState(0);
+  const [resetIsSubmitting, setResetIsSubmitting] = useState(false);
+  const [resetShowPassword, setResetShowPassword] = useState(false);
+
   const API_BASE_URL = 'http://localhost:3001';
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -52,6 +63,14 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
     }, 1000);
     return () => window.clearInterval(timer);
   }, [cooldownSeconds]);
+
+  useEffect(() => {
+    if (resetCooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setResetCooldownSeconds((v) => (v > 0 ? v - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resetCooldownSeconds]);
 
   useEffect(() => {
     return () => {
@@ -115,6 +134,89 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
       setErrorMessage('验证码发送失败');
     } finally {
       setIsSendingCode(false);
+    }
+  };
+
+  const sendResetCode = async () => {
+    setErrorMessage(null);
+    setToastMessage(null);
+    if (!resetEmail || !emailRegex.test(resetEmail)) {
+      setErrorMessage('请输入正确的邮箱地址');
+      return;
+    }
+    if (resetCooldownSeconds > 0) return;
+
+    setResetIsSendingCode(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/send-reset-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const retryAfter = typeof data?.retryAfterSeconds === 'number' ? data.retryAfterSeconds : null;
+        if (response.status === 429 && retryAfter) {
+          setResetCooldownSeconds(retryAfter);
+        }
+        setErrorMessage(data?.error || '验证码发送失败');
+        return;
+      }
+
+      setResetCooldownSeconds(60);
+      showToast('验证码已发送到您的邮箱📮');
+    } catch {
+      setErrorMessage('验证码发送失败');
+    } finally {
+      setResetIsSendingCode(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (!resetEmail || !emailRegex.test(resetEmail)) {
+      setErrorMessage('请输入正确的邮箱地址');
+      return;
+    }
+    if (!/^\d{6}$/.test(resetCode)) {
+      setErrorMessage('请输入6位验证码');
+      return;
+    }
+    if (!resetNewPassword || resetNewPassword.length < 6) {
+      setErrorMessage('新密码至少6位');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setErrorMessage('两次输入的新密码不一致');
+      return;
+    }
+
+    setResetIsSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, code: resetCode, newPassword: resetNewPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErrorMessage(data?.error || '重置失败');
+        return;
+      }
+
+      showToast('密码已重置，请使用新密码登录');
+      setIdentifier(resetEmail);
+      setPassword('');
+      setShowForgotPassword(false);
+      setResetCode('');
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+    } catch {
+      setErrorMessage('重置失败');
+    } finally {
+      setResetIsSubmitting(false);
     }
   };
 
@@ -212,6 +314,112 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
             </div>
           )}
 
+          {showForgotPassword && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={() => setShowForgotPassword(false)}></div>
+              <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40">
+                <div className="bg-gradient-to-b from-gray-50 to-white p-8 border-b border-gray-100 flex justify-between items-start">
+                  <div>
+                    <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">找回密码</h3>
+                    <p className="text-sm text-gray-500 font-semibold mt-1">输入邮箱获取验证码并设置新密码</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(false)}
+                    className="p-2.5 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors shadow-sm border border-gray-100"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-8 space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700 ml-1">电子邮箱</label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors" size={20} />
+                      <input
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center ml-1">
+                      <label className="text-sm font-bold text-gray-700">验证码</label>
+                      <button
+                        type="button"
+                        onClick={sendResetCode}
+                        disabled={resetIsSendingCode || resetCooldownSeconds > 0 || !resetEmail}
+                        className="text-xs font-bold text-lime-600 hover:text-lime-700 hover:underline disabled:opacity-50 disabled:hover:no-underline"
+                      >
+                        {resetCooldownSeconds > 0 ? `重新发送(${resetCooldownSeconds}s)` : (resetIsSendingCode ? '发送中...' : '获取验证码')}
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value)}
+                      placeholder="6位验证码"
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-4 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700 ml-1">新密码</label>
+                    <div className="relative group">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors" size={20} />
+                      <input
+                        type={resetShowPassword ? 'text' : 'password'}
+                        value={resetNewPassword}
+                        onChange={(e) => setResetNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-12 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setResetShowPassword(!resetShowPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition-colors"
+                      >
+                        {resetShowPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-700 ml-1">确认新密码</label>
+                    <input
+                      type="password"
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-4 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={resetIsSubmitting}
+                    className="w-full py-4 bg-black text-white rounded-2xl font-bold text-lg hover:bg-gray-800 hover:scale-[1.01] active:scale-[0.99] transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2"
+                  >
+                    {resetIsSubmitting ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        提交中...
+                      </>
+                    ) : (
+                      '确认重置'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div className="space-y-1.5">
@@ -273,7 +481,7 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
                <div className="flex justify-between items-center ml-1">
                  <label className="text-sm font-bold text-gray-700">密码</label>
                  {isLogin && (
-                   <button type="button" className="text-xs font-bold text-lime-600 hover:text-lime-700 hover:underline">
+                   <button type="button" onClick={() => { setShowForgotPassword(true); setResetEmail(identifier && emailRegex.test(identifier) ? identifier : ''); setResetCode(''); setResetNewPassword(''); setResetConfirmPassword(''); setResetCooldownSeconds(0); }} className="text-xs font-bold text-lime-600 hover:text-lime-700 hover:underline">
                      忘记密码?
                    </button>
                  )}

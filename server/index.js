@@ -47,6 +47,308 @@ const tryGetAuthUser = async (req) => {
   }
 };
 
+const getActiveSubscriptionForUser = async (userId) => {
+  if (!userId) return null;
+  const [rows] = await pool.execute(
+    `SELECT id, user_id, status, plan_code, plan_name, started_at, current_period_start, current_period_end, canceled_at, ended_at, provider, provider_subscription_id, provider_order_id, price_amount, price_currency, created_at, updated_at
+     FROM user_subscriptions
+     WHERE user_id = ?
+       AND status = 'active'
+       AND current_period_end > NOW()
+     ORDER BY current_period_end DESC
+     LIMIT 1`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows[0];
+};
+
+const getTierForUser = async (userRow) => {
+  if (!userRow) return 'free';
+  if (userRow.channel === 1) return 'admin';
+  const sub = await getActiveSubscriptionForUser(userRow.user_id);
+  if (sub && ['weekly', 'monthly', 'yearly', 'custom'].includes(sub.plan_code)) return 'pro';
+  return 'free';
+};
+
+const getProQuotaLimitByPlanCode = (planCode) => {
+  if (planCode === 'weekly') return 30;
+  if (planCode === 'monthly') return 150;
+  if (planCode === 'yearly') return 999999999;
+  return 150;
+};
+
+const ensureFreeGrantAfterProExpired = async (userId) => {
+  if (!userId) return;
+  const [rows] = await pool.execute(
+    `SELECT id, plan_code, current_period_end
+     FROM user_subscriptions
+     WHERE user_id = ?
+       AND plan_code IN ('weekly','monthly','yearly','custom')
+       AND current_period_end <= NOW()
+     ORDER BY current_period_end DESC
+     LIMIT 1`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return;
+
+  const endedAt = rows[0]?.current_period_end;
+  if (!endedAt) return;
+
+  const periodEnd = '2099-01-01 00:00:00';
+  await pool.execute(
+    `INSERT IGNORE INTO user_quota_periods
+      (user_id, tier, grant_reason, period_type, period_start, period_end, quota_limit, used_count_success, reserved_count_success, used_count_total)
+     VALUES (?, 'free', 'pro_expired_bonus', 'lifetime', ?, ?, 2, 0, 0, 0)`,
+    [userId, new Date(endedAt), periodEnd]
+  );
+};
+
+const ensureAdminShadowQuotaPeriod = async (userId) => {
+  if (!userId) return null;
+  await pool.execute(
+    `INSERT IGNORE INTO user_quota_periods
+      (user_id, tier, grant_reason, period_type, period_start, period_end, quota_limit, used_count_success, reserved_count_success, used_count_total)
+     VALUES (?, 'pro', 'admin_shadow', 'lifetime', NOW(), '2099-01-01 00:00:00', 999999999, 0, 0, 0)`,
+    [userId]
+  );
+  const [rows] = await pool.execute(
+    `SELECT id, quota_limit
+     FROM user_quota_periods
+     WHERE user_id = ?
+       AND tier = 'pro'
+       AND period_type = 'lifetime'
+       AND grant_reason = 'admin_shadow'
+     ORDER BY period_start DESC
+     LIMIT 1`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows[0];
+};
+
+const ensureFreeRegisterGrant = async (userId) => {
+  if (!userId) return;
+  const [rows] = await pool.execute(
+    `SELECT id
+     FROM user_quota_periods
+     WHERE user_id = ?
+       AND tier = 'free'
+       AND period_type = 'lifetime'
+       AND grant_reason = 'register'
+     LIMIT 1`,
+    [userId]
+  );
+  if (Array.isArray(rows) && rows.length > 0) return;
+  await pool.execute(
+    `INSERT IGNORE INTO user_quota_periods
+      (user_id, tier, grant_reason, period_type, period_start, period_end, quota_limit, used_count_success, reserved_count_success, used_count_total)
+     VALUES (?, 'free', 'register', 'lifetime', NOW(), '2099-01-01 00:00:00', 2, 0, 0, 0)`,
+    [userId]
+  );
+};
+
+const ensureProQuotaPeriod = async (userId, subscription) => {
+  if (!userId || !subscription) return null;
+  const periodType = subscription.plan_code === 'weekly' ? 'weekly' : subscription.plan_code === 'yearly' ? 'yearly' : 'monthly';
+  const quotaLimit = getProQuotaLimitByPlanCode(subscription.plan_code);
+  await pool.execute(
+    `INSERT IGNORE INTO user_quota_periods
+      (user_id, tier, grant_reason, period_type, period_start, period_end, quota_limit, used_count_success, reserved_count_success, used_count_total)
+     VALUES (?, 'pro', 'subscription', ?, ?, ?, ?, 0, 0, 0)`,
+    [
+      userId,
+      periodType,
+      new Date(subscription.current_period_start),
+      new Date(subscription.current_period_end),
+      quotaLimit
+    ]
+  );
+  const [rows] = await pool.execute(
+    `SELECT id, quota_limit, used_count_success, reserved_count_success, used_count_total, period_start, period_end
+     FROM user_quota_periods
+     WHERE user_id = ? AND tier = 'pro' AND period_type = ? AND period_start = ? AND period_end = ?
+     LIMIT 1`,
+    [
+      userId,
+      periodType,
+      new Date(subscription.current_period_start),
+      new Date(subscription.current_period_end)
+    ]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const row = rows[0];
+  if (subscription.plan_code === 'yearly' && (row.quota_limit === null || row.quota_limit === undefined)) {
+    await pool.execute('UPDATE user_quota_periods SET quota_limit = ? WHERE id = ? AND quota_limit IS NULL', [quotaLimit, row.id]);
+    row.quota_limit = quotaLimit;
+  }
+  return row;
+};
+
+const reserveQuotaForAttempt = async ({ userId, tier, subscription, reportType }) => {
+  if (!userId) {
+    return { ok: false, status: 401, payload: { error: '未登录', code: 'UNAUTHORIZED' } };
+  }
+
+  if (tier === 'admin') {
+    const qp = await ensureAdminShadowQuotaPeriod(userId);
+    const attemptId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+    if (qp?.id) {
+      await pool.execute(
+        `UPDATE user_quota_periods SET used_count_total = used_count_total + 1, last_used_at = NOW() WHERE id = ?`,
+        [qp.id]
+      );
+    }
+    await pool.execute(
+      `INSERT INTO analysis_attempts (attempt_id, user_id, report_type, quota_period_id, status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [attemptId, userId, reportType, qp?.id ?? null]
+    );
+    return { ok: true, attemptId, quotaPeriodId: qp?.id ?? null, quotaLimit: qp?.quota_limit == null ? null : Number(qp.quota_limit), reserved: false };
+  }
+
+  if (tier === 'pro') {
+    if (!subscription) {
+      return { ok: false, status: 403, payload: { error: '订阅无效', code: 'SUBSCRIPTION_INVALID' } };
+    }
+    const quotaPeriod = await ensureProQuotaPeriod(userId, subscription);
+    if (!quotaPeriod) {
+      return { ok: false, status: 500, payload: { error: '配额初始化失败', code: 'QUOTA_INIT_FAILED' } };
+    }
+
+    const attemptId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+    if (quotaPeriod.quota_limit == null) {
+      await pool.execute(
+        `UPDATE user_quota_periods SET used_count_total = used_count_total + 1, last_used_at = NOW() WHERE id = ?`,
+        [quotaPeriod.id]
+      );
+      await pool.execute(
+        `INSERT INTO analysis_attempts (attempt_id, user_id, report_type, quota_period_id, status)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [attemptId, userId, reportType, quotaPeriod.id]
+      );
+      return { ok: true, attemptId, quotaPeriodId: quotaPeriod.id, quotaLimit: null, reserved: false };
+    }
+
+    const [result] = await pool.execute(
+      `UPDATE user_quota_periods
+       SET reserved_count_success = reserved_count_success + 1,
+           used_count_total = used_count_total + 1,
+           last_used_at = NOW()
+       WHERE id = ?
+         AND (used_count_success + reserved_count_success) < quota_limit`,
+      [quotaPeriod.id]
+    );
+    if (!result || result.affectedRows !== 1) {
+      return { ok: false, status: 403, payload: { error: '余额不足', code: 'QUOTA_EXCEEDED' } };
+    }
+
+    await pool.execute(
+      `INSERT INTO analysis_attempts (attempt_id, user_id, report_type, quota_period_id, status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [attemptId, userId, reportType, quotaPeriod.id]
+    );
+    return { ok: true, attemptId, quotaPeriodId: quotaPeriod.id, quotaLimit: quotaPeriod.quota_limit, reserved: true };
+  }
+
+  await ensureFreeGrantAfterProExpired(userId);
+
+  const [freeRows] = await pool.execute(
+    `SELECT id, quota_limit, used_count_success, reserved_count_success, period_start
+     FROM user_quota_periods
+     WHERE user_id = ?
+       AND tier = 'free'
+       AND period_type = 'lifetime'
+       AND period_start <= NOW()
+       AND period_end > NOW()
+     ORDER BY period_start ASC`,
+    [userId]
+  );
+  const periods = Array.isArray(freeRows) ? freeRows : [];
+  const attemptId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+
+  for (const p of periods) {
+    if (p.quota_limit != null && (p.used_count_success + p.reserved_count_success) >= p.quota_limit) continue;
+    if (p.quota_limit == null) {
+      await pool.execute(
+        `UPDATE user_quota_periods SET used_count_total = used_count_total + 1, last_used_at = NOW() WHERE id = ?`,
+        [p.id]
+      );
+      await pool.execute(
+        `INSERT INTO analysis_attempts (attempt_id, user_id, report_type, quota_period_id, status)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [attemptId, userId, reportType, p.id]
+      );
+      return { ok: true, attemptId, quotaPeriodId: p.id, quotaLimit: null, reserved: false };
+    }
+
+    const [result] = await pool.execute(
+      `UPDATE user_quota_periods
+       SET reserved_count_success = reserved_count_success + 1,
+           used_count_total = used_count_total + 1,
+           last_used_at = NOW()
+       WHERE id = ?
+         AND (used_count_success + reserved_count_success) < quota_limit`,
+      [p.id]
+    );
+    if (result && result.affectedRows === 1) {
+      await pool.execute(
+        `INSERT INTO analysis_attempts (attempt_id, user_id, report_type, quota_period_id, status)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [attemptId, userId, reportType, p.id]
+      );
+      return { ok: true, attemptId, quotaPeriodId: p.id, quotaLimit: p.quota_limit, reserved: true };
+    }
+  }
+
+  return { ok: false, status: 403, payload: { error: '余额不足', code: 'QUOTA_EXCEEDED' } };
+};
+
+const finalizeQuotaAttempt = async ({ attemptId, quotaPeriodId, success, reserved }) => {
+  try {
+    if (attemptId) {
+      await pool.execute(
+        `UPDATE analysis_attempts SET status = ?, ended_at = NOW() WHERE attempt_id = ?`,
+        [success ? 'success' : 'failed', attemptId]
+      );
+    }
+    if (!quotaPeriodId) return;
+    if (success) {
+      if (reserved) {
+        await pool.execute(
+          `UPDATE user_quota_periods
+           SET reserved_count_success = IF(reserved_count_success > 0, reserved_count_success - 1, 0),
+               used_count_success = used_count_success + 1,
+               last_used_at = NOW()
+           WHERE id = ?`,
+          [quotaPeriodId]
+        );
+      } else {
+        await pool.execute(
+          `UPDATE user_quota_periods
+           SET used_count_success = used_count_success + 1,
+               last_used_at = NOW()
+           WHERE id = ?`,
+          [quotaPeriodId]
+        );
+      }
+      return;
+    }
+
+    if (reserved) {
+      await pool.execute(
+        `UPDATE user_quota_periods
+         SET reserved_count_success = IF(reserved_count_success > 0, reserved_count_success - 1, 0),
+             last_used_at = NOW()
+         WHERE id = ?`,
+        [quotaPeriodId]
+      );
+    }
+  } catch (e) {
+    console.error('❌ finalize quota attempt failed:', e);
+  }
+};
+
 const persistAnalysisReportToDb = async ({
   reportId,
   startedAt,
@@ -343,6 +645,13 @@ app.post('/api/auth/register', async (req, res) => {
     await connection.execute('UPDATE users SET user_id = ? WHERE id = ?', [publicUserId, createResult.insertId]);
 
     await connection.execute(
+      `INSERT IGNORE INTO user_quota_periods
+        (user_id, tier, grant_reason, period_type, period_start, period_end, quota_limit, used_count_success, reserved_count_success, used_count_total)
+       VALUES (?, 'free', 'register', 'lifetime', NOW(), '2099-01-01 00:00:00', 2, 0, 0, 0)`,
+      [publicUserId]
+    );
+
+    await connection.execute(
       'UPDATE email_verification_codes SET used_at = NOW(), user_id = ? WHERE id = ?',
       [publicUserId, latest.id]
     );
@@ -418,9 +727,238 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(404).json({ error: '用户不存在', code: 'USER_NOT_FOUND' });
     }
-    return res.json({ user: rows[0] });
+
+    const user = rows[0];
+    const tier = await getTierForUser(user);
+    const subscription = tier === 'pro' ? await getActiveSubscriptionForUser(user.user_id) : null;
+    if (tier === 'free') {
+      await ensureFreeGrantAfterProExpired(user.user_id);
+    }
+
+    let quota = null;
+    if (tier === 'admin') {
+      quota = {
+        tier,
+        planCode: 'admin',
+        quotaLimit: null,
+        usedSuccess: 0,
+        usedTotal: 0,
+        reservedSuccess: 0,
+        remainingSuccess: null
+      };
+    } else if (tier === 'pro' && subscription) {
+      const qp = await ensureProQuotaPeriod(user.user_id, subscription);
+      if (qp) {
+        const usedSuccess = Number(qp.used_count_success || 0);
+        const usedTotal = Number(qp.used_count_total || 0);
+        const reservedSuccess = Number(qp.reserved_count_success || 0);
+        const quotaLimit = qp.quota_limit == null ? null : Number(qp.quota_limit);
+        quota = {
+          tier,
+          planCode: subscription.plan_code,
+          quotaLimit,
+          usedSuccess,
+          usedTotal,
+          reservedSuccess,
+          remainingSuccess: quotaLimit == null ? null : Math.max(0, quotaLimit - usedSuccess - reservedSuccess),
+          periodStart: qp.period_start,
+          periodEnd: qp.period_end
+        };
+      }
+    } else {
+      const [qRows] = await pool.execute(
+        `SELECT id, quota_limit, used_count_success, reserved_count_success, used_count_total, period_start
+         FROM user_quota_periods
+         WHERE user_id = ? AND tier = 'free' AND period_type = 'lifetime' AND period_start <= NOW() AND period_end > NOW()
+         ORDER BY period_start ASC`,
+        [user.user_id]
+      );
+      const list = Array.isArray(qRows) ? qRows : [];
+      let quotaLimitTotal = 0;
+      let usedSuccessTotal = 0;
+      let usedTotalTotal = 0;
+      let reservedSuccessTotal = 0;
+      for (const r of list) {
+        quotaLimitTotal += Number(r.quota_limit || 0);
+        usedSuccessTotal += Number(r.used_count_success || 0);
+        usedTotalTotal += Number(r.used_count_total || 0);
+        reservedSuccessTotal += Number(r.reserved_count_success || 0);
+      }
+      quota = {
+        tier,
+        planCode: 'free',
+        quotaLimit: quotaLimitTotal,
+        usedSuccess: usedSuccessTotal,
+        usedTotal: usedTotalTotal,
+        reservedSuccess: reservedSuccessTotal,
+        remainingSuccess: Math.max(0, quotaLimitTotal - usedSuccessTotal - reservedSuccessTotal)
+      };
+    }
+
+    return res.json({ user, tier, subscription, quota });
   } catch (error) {
     console.error('❌ me error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/billing/mock-pay', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    if (user.channel === 1) {
+      return res.json({ ok: true, tier: 'admin' });
+    }
+
+    const { plan_code, provider } = req.body || {};
+    if (!plan_code || !['weekly', 'monthly', 'yearly'].includes(plan_code)) {
+      return res.status(400).json({ error: 'plan_code 不正确', code: 'INVALID_PLAN_CODE' });
+    }
+    const now = new Date();
+    const periodStart = now;
+    const periodEnd = new Date(now);
+    if (plan_code === 'weekly') periodEnd.setDate(periodEnd.getDate() + 7);
+    if (plan_code === 'monthly') periodEnd.setMonth(periodEnd.getMonth() + 1);
+    if (plan_code === 'yearly') periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+
+    await pool.execute(
+      `UPDATE user_subscriptions
+       SET status = 'canceled', canceled_at = NOW(), ended_at = NOW()
+       WHERE user_id = ? AND status = 'active'`,
+      [user.user_id]
+    );
+
+    await pool.execute(
+      `INSERT INTO user_subscriptions
+        (user_id, status, plan_code, plan_name, started_at, current_period_start, current_period_end, provider, provider_order_id, created_at, updated_at)
+       VALUES (?, 'active', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        user.user_id,
+        plan_code,
+        plan_code === 'weekly' ? '周会员' : plan_code === 'monthly' ? '月会员' : '年会员',
+        now,
+        periodStart,
+        periodEnd,
+        provider || null,
+        `mock-${crypto.randomBytes(8).toString('hex')}`
+      ]
+    );
+
+    const sub = await getActiveSubscriptionForUser(user.user_id);
+    if (sub) {
+      await ensureProQuotaPeriod(user.user_id, sub);
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ mock-pay error:', error);
+    return res.status(500).json({ error: '支付失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/usage/summary', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+
+    await ensureFreeRegisterGrant(user.user_id);
+    await ensureFreeGrantAfterProExpired(user.user_id);
+
+    // 严格按口径：
+    // SELECT
+    //   user_id,
+    //   sum(quota_limit) - sum(used_count_success) AS 剩余分析次数,
+    //   sum(used_count_success) as 历史分析次数
+    // FROM user_quota_periods where user_id = ? GROUP BY user_id
+    const [rows] = await pool.execute(
+      `SELECT
+         user_id,
+         SUM(quota_limit) AS quotaLimit,
+         SUM(quota_limit) - SUM(used_count_success) AS remainingSuccess,
+         SUM(used_count_success) AS historyCount
+       FROM user_quota_periods
+       WHERE user_id = ?
+       GROUP BY user_id`,
+      [user.user_id]
+    );
+
+    const r = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    const quotaLimit = r?.quotaLimit === null || r?.quotaLimit === undefined ? 0 : Number(r.quotaLimit);
+    const remainingSuccess = r?.remainingSuccess === null || r?.remainingSuccess === undefined ? 0 : Number(r.remainingSuccess);
+    const historyCount = r?.historyCount === null || r?.historyCount === undefined ? 0 : Number(r.historyCount);
+
+    return res.json({
+      userId: user.user_id,
+      quotaLimit,
+      remainingSuccess,
+      historyCount
+    });
+  } catch (error) {
+    console.error('❌ usage summary error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/usage/trend', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 7));
+    const safeDays = Number.isFinite(days) ? Math.floor(days) : 7;
+
+    // 严格按口径：
+    // SELECT
+    //   user_id,
+    //   DATE_FORMAT(started_at, '%Y-%m-%d') AS 日期,
+    //   COUNT(*) AS 分析次数
+    // FROM analysis_reports where user_id = ?
+    // GROUP BY user_id, DATE_FORMAT(started_at, '%Y-%m-%d');
+    // 同时补齐最近 N 天缺失日期为 0，避免图表为空。
+    const [rows] = await pool.execute(
+      `SELECT
+         ANY_VALUE(user_id) AS user_id,
+         DATE_FORMAT(started_at, '%Y-%m-%d') AS d,
+         COUNT(*) AS c
+       FROM analysis_reports
+       WHERE user_id = ?
+         AND started_at >= (CURDATE() - INTERVAL ${safeDays - 1} DAY)
+       GROUP BY user_id, DATE_FORMAT(started_at, '%Y-%m-%d')
+       ORDER BY d ASC`,
+      [user.user_id]
+    );
+
+    const map = new Map();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const key = typeof r?.d === 'string' ? r.d : null;
+      if (!key) continue;
+      map.set(key, Number(r?.c || 0));
+    }
+
+    const today = new Date();
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (safeDays - 1));
+
+    const items = [];
+    for (let i = 0; i < safeDays; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const key = `${yyyy}-${mm}-${dd}`;
+      items.push({ date: key, count: Number(map.get(key) || 0) });
+    }
+
+    return res.json({ days: safeDays, items });
+  } catch (error) {
+    console.error('❌ usage trend error:', error);
     return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
   }
 });
@@ -1252,7 +1790,8 @@ const SYSTEM_INSTRUCTION = `
 **重要**: 只返回 JSON，不要有任何其他文字说明。
 `;
 
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', requireAuth, async (req, res) => {
+  let reservation = null;
   try {
     const { prompt, imageBase64, strategyMode } = req.body;
 
@@ -1336,17 +1875,46 @@ app.post('/api/analyze', async (req, res) => {
       userContent.push({ type: 'text', text: `使用「${strategyMode}」策略分析这张 K 线图。${prompt}` });
     }
 
+    const authUser = await tryGetAuthUser(req);
+    if (!authUser?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+
+    const tier = await getTierForUser(authUser);
+    const subscription = tier === 'pro' ? await getActiveSubscriptionForUser(authUser.user_id) : null;
+    const reportType = imageBase64 ? 'kline' : 'text';
+    reservation = await reserveQuotaForAttempt({
+      userId: authUser.user_id,
+      tier,
+      subscription,
+      reportType
+    });
+    if (!reservation.ok) {
+      return res.status(reservation.status).json(reservation.payload);
+    }
+
     console.log('   ⏳ 正在调用 AI 分析...');
     const startTime = Date.now();
 
-    const response = await client.chat.completions.create({
-      model: model,
-      messages: [
-        { role: 'system', content: SYSTEM_INSTRUCTION },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0.4,
-    });
+    let response;
+    try {
+      response = await client.chat.completions.create({
+        model: model,
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.4,
+      });
+    } catch (e) {
+      await finalizeQuotaAttempt({
+        attemptId: reservation.attemptId,
+        quotaPeriodId: reservation.quotaPeriodId,
+        success: false,
+        reserved: reservation.reserved
+      });
+      throw e;
+    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`   ⏱️ AI 响应耗时: ${duration}s`);
@@ -1360,7 +1928,18 @@ app.post('/api/analyze', async (req, res) => {
         jsonStr = jsonMatch[1];
       }
 
-      const parsedData = JSON.parse(jsonStr.trim());
+      let parsedData;
+      try {
+        parsedData = JSON.parse(jsonStr.trim());
+      } catch (e) {
+        await finalizeQuotaAttempt({
+          attemptId: reservation.attemptId,
+          quotaPeriodId: reservation.quotaPeriodId,
+          success: false,
+          reserved: reservation.reserved
+        });
+        return res.status(500).json({ error: 'AI 返回格式不正确', code: 'INVALID_AI_RESPONSE' });
+      }
       if (!parsedData.strategyMode) {
         parsedData.strategyMode = strategyMode;
       }
@@ -1387,17 +1966,23 @@ app.post('/api/analyze', async (req, res) => {
       const requestEndedAt = new Date();
       const reportStockCode = parsedData.stockCode || extractStockCode(prompt) || null;
       const market = inferMarketFromSymbol(reportStockCode);
-      const user = await tryGetAuthUser(req);
       await persistAnalysisReportToDb({
         reportId,
         startedAt: requestStartedAt.toISOString(),
         endedAt: requestEndedAt.toISOString(),
         stockCode: reportStockCode,
         market,
-        user,
+        user: authUser,
         content: parsedData,
-        reportType: imageBase64 ? 'kline' : 'text',
+        reportType,
         strategyMode
+      });
+
+      await finalizeQuotaAttempt({
+        attemptId: reservation.attemptId,
+        quotaPeriodId: reservation.quotaPeriodId,
+        success: true,
+        reserved: reservation.reserved
       });
 
       parsedData.id = reportId;
@@ -1407,9 +1992,23 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     console.log('   ❌ AI 未返回内容');
+    await finalizeQuotaAttempt({
+      attemptId: reservation?.attemptId,
+      quotaPeriodId: reservation?.quotaPeriodId,
+      success: false,
+      reserved: reservation?.reserved
+    });
     res.status(500).json({ error: 'No response from AI' });
   } catch (error) {
     console.error('❌ API Error:', error);
+    try {
+      await finalizeQuotaAttempt({
+        attemptId: reservation?.attemptId,
+        quotaPeriodId: reservation?.quotaPeriodId,
+        success: false,
+        reserved: reservation?.reserved
+      });
+    } catch {}
     res.status(500).json({ error: 'Analysis failed' });
   }
 });
@@ -1540,7 +2139,8 @@ const KLINE_ANALYSIS_INSTRUCTION = `
 `;
 
 // K 线图片上传并分析接口
-app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
+app.post('/api/analyze-kline', requireAuth, upload.single('image'), async (req, res) => {
+  let reservation = null;
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传 K 线图片' });
@@ -1565,24 +2165,51 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
     const mimeType = req.file.mimetype;
     const base64Data = `data:${mimeType};base64,${base64Image}`;
 
+    const authUser = await tryGetAuthUser(req);
+    if (!authUser?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    const tier = await getTierForUser(authUser);
+    const subscription = tier === 'pro' ? await getActiveSubscriptionForUser(authUser.user_id) : null;
+    reservation = await reserveQuotaForAttempt({
+      userId: authUser.user_id,
+      tier,
+      subscription,
+      reportType: 'kline'
+    });
+    if (!reservation.ok) {
+      return res.status(reservation.status).json(reservation.payload);
+    }
+
     console.log(`📸 收到 K 线图片: ${req.file.filename}`);
     console.log(`📊 开始使用 qwen3-vl-plus 模型分析...`);
 
     // 使用 qwen3-vl-plus 视觉模型分析
-    const response = await client.chat.completions.create({
-      model: 'qwen-vl-max',  // 使用最强的视觉模型
-      messages: [
-        { role: 'system', content: KLINE_ANALYSIS_INSTRUCTION },
-        { 
-          role: 'user', 
-          content: [
-            { type: 'image_url', image_url: { url: base64Data } },
-            { type: 'text', text: `请仔细分析这张 K 线图，识别其中的技术形态和信号。${prompt ? '用户补充说明: ' + prompt : ''}` }
-          ]
-        },
-      ],
-      temperature: 0.3,
-    });
+    let response;
+    try {
+      response = await client.chat.completions.create({
+        model: 'qwen-vl-max',  // 使用最强的视觉模型
+        messages: [
+          { role: 'system', content: KLINE_ANALYSIS_INSTRUCTION },
+          { 
+            role: 'user', 
+            content: [
+              { type: 'image_url', image_url: { url: base64Data } },
+              { type: 'text', text: `请仔细分析这张 K 线图，识别其中的技术形态和信号。${prompt ? '用户补充说明: ' + prompt : ''}` }
+            ]
+          },
+        ],
+        temperature: 0.3,
+      });
+    } catch (e) {
+      await finalizeQuotaAttempt({
+        attemptId: reservation.attemptId,
+        quotaPeriodId: reservation.quotaPeriodId,
+        success: false,
+        reserved: reservation.reserved
+      });
+      throw e;
+    }
 
     const content = response.choices[0]?.message?.content;
     console.log('🤖 AI 返回内容:', content?.substring(0, 200) + '...');
@@ -1594,7 +2221,18 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
         jsonStr = jsonMatch[1];
       }
 
-      const parsedData = JSON.parse(jsonStr.trim());
+      let parsedData;
+      try {
+        parsedData = JSON.parse(jsonStr.trim());
+      } catch (e) {
+        await finalizeQuotaAttempt({
+          attemptId: reservation.attemptId,
+          quotaPeriodId: reservation.quotaPeriodId,
+          success: false,
+          reserved: reservation.reserved
+        });
+        return res.status(500).json({ error: 'AI 返回格式不正确', code: 'INVALID_AI_RESPONSE' });
+      }
       parsedData.strategyMode = strategyMode;
       parsedData.imageUrl = `/uploads/${req.file.filename}`; // 返回图片路径
 
@@ -1612,17 +2250,23 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
         }
 
         const requestEndedAt = new Date();
-        const user = await tryGetAuthUser(req);
         await persistAnalysisReportToDb({
           reportId,
           startedAt: requestStartedAt.toISOString(),
           endedAt: requestEndedAt.toISOString(),
           stockCode: extractStockCode(parsedData.stockCode) || null,
           market: inferMarketFromSymbol(parsedData.stockCode),
-          user,
+          user: authUser,
           content: parsedData,
           reportType: 'kline',
           strategyMode
+        });
+
+        await finalizeQuotaAttempt({
+          attemptId: reservation.attemptId,
+          quotaPeriodId: reservation.quotaPeriodId,
+          success: true,
+          reserved: reservation.reserved
         });
 
         parsedData.id = reportId;
@@ -1666,17 +2310,23 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       }
 
       const requestEndedAt = new Date();
-      const user = await tryGetAuthUser(req);
       await persistAnalysisReportToDb({
         reportId,
         startedAt: requestStartedAt.toISOString(),
         endedAt: requestEndedAt.toISOString(),
         stockCode: parsedData.stockCode || stockCodeFromImage,
         market: inferMarketFromSymbol(parsedData.stockCode || stockCodeFromImage),
-        user,
+        user: authUser,
         content: parsedData,
         reportType: 'kline',
         strategyMode
+      });
+
+      await finalizeQuotaAttempt({
+        attemptId: reservation.attemptId,
+        quotaPeriodId: reservation.quotaPeriodId,
+        success: true,
+        reserved: reservation.reserved
       });
 
       parsedData.id = reportId;
@@ -1685,9 +2335,23 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       return res.json(parsedData);
     }
 
+    await finalizeQuotaAttempt({
+      attemptId: reservation?.attemptId,
+      quotaPeriodId: reservation?.quotaPeriodId,
+      success: false,
+      reserved: reservation?.reserved
+    });
     res.status(500).json({ error: 'AI 未返回分析结果' });
   } catch (error) {
     console.error('K 线分析错误:', error);
+    try {
+      await finalizeQuotaAttempt({
+        attemptId: reservation?.attemptId,
+        quotaPeriodId: reservation?.quotaPeriodId,
+        success: false,
+        reserved: reservation?.reserved
+      });
+    } catch {}
     res.status(500).json({ error: 'K 线分析失败: ' + error.message });
   }
 });

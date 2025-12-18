@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Settings, 
   Crown, 
@@ -32,14 +32,14 @@ import { UserTier } from '../types';
 
 // --- Mock Data ---
 
-const usageData = [
-  { day: '周一', count: 12 },
-  { day: '周二', count: 18 },
-  { day: '周三', count: 8 },
-  { day: '周四', count: 24 },
-  { day: '周五', count: 16 },
-  { day: '周六', count: 5 },
-  { day: '周日', count: 9 },
+const guestUsageData = [
+  { date: '2025-12-12', count: 12 },
+  { date: '2025-12-13', count: 18 },
+  { date: '2025-12-14', count: 8 },
+  { date: '2025-12-15', count: 24 },
+  { date: '2025-12-16', count: 16 },
+  { date: '2025-12-17', count: 5 },
+  { date: '2025-12-18', count: 9 },
 ];
 
 const systemUpdates = [
@@ -54,6 +54,15 @@ const sentimentData = [
   { name: '中性', value: 25, color: '#f3f4f6' }, // gray-100
   { name: '恐慌', value: 10, color: '#fca5a5' }, // red-300
 ];
+
+type UsageSummary = {
+  userId: string;
+  quotaLimit: number | null;
+  remainingSuccess: number | null;
+  historyCount: number;
+};
+
+type UsageTrendItem = { date: string; count: number };
 
 // --- Components ---
 
@@ -145,7 +154,17 @@ const MembershipCard: React.FC<MembershipCardProps> = ({ tier, onSubscribe }) =>
   );
 };
 
-const StatsGrid = () => (
+const StatsGrid = ({
+  remainingSuccess,
+  quotaLimit,
+  historyCount,
+  isDemo
+}: {
+  remainingSuccess: number | null;
+  quotaLimit: number | null;
+  historyCount: number;
+  isDemo: boolean;
+}) => (
   <div className="grid grid-rows-2 gap-6 h-full min-h-[300px]">
     {/* Remaining Credits */}
     <div className="bg-lime-300 rounded-[2rem] p-6 relative overflow-hidden group hover:shadow-lg hover:shadow-lime-200/50 transition-all flex flex-col justify-between">
@@ -160,8 +179,10 @@ const StatsGrid = () => (
        
        <div className="relative z-10">
          <div className="flex items-baseline gap-1">
-            <h3 className="text-4xl font-extrabold text-black tracking-tight">88</h3>
-            <span className="text-sm font-bold text-black/60">/ 100</span>
+            <h3 className="text-4xl font-extrabold text-black tracking-tight">
+              {quotaLimit == null && !isDemo ? '∞' : (remainingSuccess ?? 0)}
+            </h3>
+            <span className="text-sm font-bold text-black/60">/ {quotaLimit == null ? (isDemo ? 100 : '∞') : quotaLimit}</span>
          </div>
          <p className="text-black/70 font-bold text-xs mt-1">剩余分析次数</p>
        </div>
@@ -176,14 +197,22 @@ const StatsGrid = () => (
          <span className="text-xs font-bold bg-gray-100 px-2 py-1 rounded-lg text-gray-500">累计</span>
        </div>
        <div>
-         <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">1,240</h3>
+         <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{historyCount.toLocaleString()}</h3>
          <p className="text-gray-400 font-bold text-xs mt-1">历史分析总数</p>
        </div>
     </div>
   </div>
 );
 
-const UsageChart = () => (
+const UsageChart = ({
+  data,
+  days,
+  onChangeDays
+}: {
+  data: UsageTrendItem[];
+  days: number;
+  onChangeDays: (days: number) => void;
+}) => (
   <div className="bg-white rounded-[2rem] p-6 border border-gray-100 shadow-[0_8px_30px_rgba(0,0,0,0.02)] h-full min-h-[300px] flex flex-col">
     <div className="flex justify-between items-center mb-6">
       <div className="flex items-center gap-2">
@@ -192,17 +221,21 @@ const UsageChart = () => (
           </div>
           <h3 className="font-bold text-gray-800">频率趋势</h3>
       </div>
-      <select className="bg-gray-50 border-none text-xs font-bold text-gray-500 rounded-lg py-1.5 px-3 focus:ring-0 cursor-pointer hover:bg-gray-100 transition-colors">
-        <option>近7天</option>
-        <option>近30天</option>
+      <select
+        value={String(days)}
+        onChange={(e) => onChangeDays(parseInt(e.target.value, 10) || 7)}
+        className="bg-gray-50 border-none text-xs font-bold text-gray-500 rounded-lg py-1.5 px-3 focus:ring-0 cursor-pointer hover:bg-gray-100 transition-colors"
+      >
+        <option value="7">近7天</option>
+        <option value="30">近30天</option>
       </select>
     </div>
     <div className="flex-1 w-full min-h-0">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={usageData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis 
-            dataKey="day" 
+            dataKey="date" 
             axisLine={false} 
             tickLine={false} 
             tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} 
@@ -393,6 +426,80 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ userTier, onSubscribe, onAnalyze }) => {
+  const API_BASE_URL = 'http://localhost:3001';
+  const isDemo = userTier === 'guest';
+  const [days, setDays] = useState(7);
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [trend, setTrend] = useState<UsageTrendItem[]>(guestUsageData);
+
+  const remainingSuccess = useMemo(() => {
+    if (isDemo) return 88;
+    return typeof summary?.remainingSuccess === 'number' ? summary.remainingSuccess : 0;
+  }, [isDemo, summary]);
+
+  const quotaLimit = useMemo(() => {
+    if (isDemo) return 100;
+    return summary?.quotaLimit ?? null;
+  }, [isDemo, summary]);
+
+  const historyCount = useMemo(() => {
+    if (isDemo) return 1240;
+    return typeof summary?.historyCount === 'number' ? summary.historyCount : 0;
+  }, [isDemo, summary]);
+
+  useEffect(() => {
+    if (isDemo) {
+      setTrend(guestUsageData);
+      return;
+    }
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/usage/summary`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) return;
+        if (!cancelled) {
+          setSummary(data as UsageSummary);
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_BASE_URL}/api/usage/trend?days=${days}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (!cancelled) {
+          setTrend(items as UsageTrendItem[]);
+        }
+      } catch {
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [days, isDemo]);
+
   return (
     <div className="max-w-[1600px] mx-auto flex flex-col gap-8 pb-10">
       
@@ -402,10 +509,10 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, onSubscribe, onAnalyze 
           <MembershipCard tier={userTier} onSubscribe={onSubscribe} />
         </div>
         <div className="col-span-1 md:col-span-6 lg:col-span-5 xl:col-span-3 h-full">
-          <StatsGrid />
+          <StatsGrid remainingSuccess={remainingSuccess} quotaLimit={quotaLimit} historyCount={historyCount} isDemo={isDemo} />
         </div>
         <div className="col-span-1 md:col-span-6 lg:col-span-7 xl:col-span-5 h-full">
-          <UsageChart />
+          <UsageChart data={trend} days={days} onChangeDays={setDays} />
         </div>
       </div>
 

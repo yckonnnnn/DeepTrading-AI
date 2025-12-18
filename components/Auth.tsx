@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Mail, 
   Lock, 
@@ -29,6 +29,8 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   
   // Form States
   const [email, setEmail] = useState('');
@@ -51,6 +53,26 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
     return () => window.clearInterval(timer);
   }, [cooldownSeconds]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2500);
+  };
+
   // Handle View Switch
   const switchView = (newView: AuthView) => {
     setView(newView);
@@ -62,6 +84,7 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
 
   const sendVerificationCode = async () => {
     setErrorMessage(null);
+    setToastMessage(null);
     if (!email || !emailRegex.test(email)) {
       setErrorMessage('请输入正确的邮箱地址');
       return;
@@ -87,6 +110,7 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
       }
 
       setCooldownSeconds(60);
+      showToast('验证码已发送到您的邮箱📮记得查看～');
     } catch (e) {
       setErrorMessage('验证码发送失败');
     } finally {
@@ -181,6 +205,12 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
               }
             </p>
           </div>
+
+          {toastMessage && (
+            <div className="mb-4 bg-black text-white rounded-2xl px-4 py-3 text-sm font-bold">
+              {toastMessage}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
@@ -365,7 +395,7 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
                 投资直觉。
              </h2>
              <p className="text-gray-400 text-lg max-w-sm leading-relaxed">
-                加入 DeepTrading，与 10,000+ 专业投资者一起，利用 Gemini 2.5 Pro 洞察市场先机。
+                加入 DeepTrading，与 10,000+ 专业投资者一起，利用 TradingAI 2.5 Pro 洞察市场先机。
              </p>
           </div>
 

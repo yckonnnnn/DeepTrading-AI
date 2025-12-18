@@ -75,20 +75,24 @@ const PaymentModal = ({
     isOpen: boolean; 
     onClose: () => void; 
     plan: any; 
-    onPaymentComplete: () => void;
+    onPaymentComplete: (planCode: string, provider: 'alipay' | 'wechat' | 'card') => Promise<boolean>;
 }) => {
     const [selectedMethod, setSelectedMethod] = useState<'alipay' | 'wechat' | 'card'>('alipay');
     const [isProcessing, setIsProcessing] = useState(false);
 
     if (!isOpen || !plan) return null;
 
-    const handlePayment = () => {
+    const handlePayment = async () => {
+        if (!plan?.id) return;
         setIsProcessing(true);
-        setTimeout(() => {
+        try {
+            const ok = await onPaymentComplete(String(plan.id), selectedMethod);
+            if (ok) {
+                onClose();
+            }
+        } finally {
             setIsProcessing(false);
-            onPaymentComplete();
-            onClose();
-        }, 1500);
+        }
     };
 
     return (
@@ -169,9 +173,15 @@ const PaymentModal = ({
     );
 };
 
-const Subscription = () => {
+interface SubscriptionProps {
+  onSubscriptionChanged?: () => void;
+}
+
+const Subscription: React.FC<SubscriptionProps> = ({ onSubscriptionChanged }) => {
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const API_BASE_URL = 'http://localhost:3001';
 
   const showToast = (msg: string) => {
       setToastMsg(msg);
@@ -179,6 +189,35 @@ const Subscription = () => {
       setTimeout(() => {
           setToastMsg(null);
       }, 3000);
+  };
+
+  const handlePaymentComplete = async (planCode: string, provider: 'alipay' | 'wechat' | 'card') => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+          showToast('请先登录后再订阅');
+          return false;
+      }
+      try {
+          const resp = await fetch(`${API_BASE_URL}/api/billing/mock-pay`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({ plan_code: planCode, provider })
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+              showToast(data?.error || '支付失败');
+              return false;
+          }
+          showToast('支付成功，已升级会员');
+          onSubscriptionChanged?.();
+          return true;
+      } catch {
+          showToast('支付失败');
+          return false;
+      }
   };
 
   return (
@@ -189,7 +228,7 @@ const Subscription = () => {
         isOpen={!!selectedPlan} 
         onClose={() => setSelectedPlan(null)} 
         plan={selectedPlan} 
-        onPaymentComplete={() => showToast('支付功能正在开发中，敬请期待🚧')}
+        onPaymentComplete={handlePaymentComplete}
       />
 
       <div className="text-center mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -428,6 +428,7 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authUser, setAuthUser] = useState<{ user_id?: string | null; username?: string | null; email?: string | null; channel?: number | null } | null>(null);
   const [history, setHistory] = useState<AIAnalysisReport[]>([]);
+  const [authRefreshNonce, setAuthRefreshNonce] = useState(0);
   const [notifications, setNotifications] = useState<AppNotification[]>(MOCK_NOTIFICATIONS);
   const [targetReportId, setTargetReportId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -466,11 +467,20 @@ const App: React.FC = () => {
 
         const channel = data?.user?.channel;
         const admin = channel === 1;
+        const backendTier = typeof data?.tier === 'string' ? data.tier : null;
         if (!cancelled) {
-          setIsAdmin(admin);
+          setIsAdmin(admin || backendTier === 'admin');
           setAuthUser(data?.user || null);
           if (typeof channel === 'number') {
             localStorage.setItem('auth_channel', String(channel));
+          }
+
+          if (backendTier === 'pro') {
+            setUserTier('pro');
+          } else if (backendTier === 'free') {
+            setUserTier('free');
+          } else if (backendTier === 'admin') {
+            setUserTier('pro');
           }
         }
 
@@ -502,7 +512,7 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentView]);
+  }, [currentView, authRefreshNonce]);
 
   // --- Handlers ---
   
@@ -642,7 +652,7 @@ const App: React.FC = () => {
           />
         );
       case 'subscription':
-        return <Subscription />;
+        return <Subscription onSubscriptionChanged={() => setAuthRefreshNonce((v) => v + 1)} />;
       case 'settings':
         return <Settings authUser={authUser} />;
       case 'announcements':

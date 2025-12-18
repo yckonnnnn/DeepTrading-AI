@@ -5,8 +5,12 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import popCore from '@alicloud/pop-core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +18,136 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: '.env.local' });
 
 const app = express();
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+const cacheDir = path.join(__dirname, '..', 'cache');
+if (!fs.existsSync(cacheDir)) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+}
+
+const formatDateYmd = (date) => {
+  const y = String(date.getFullYear());
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+};
+
+const formatTimeHms = (date) => {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${h}${m}${s}`;
+};
+
+const inferMarketFromSymbol = (symbol) => {
+  if (!symbol || typeof symbol !== 'string') return null;
+  const clean = symbol.replace(/[^0-9]/g, '').trim();
+  if (clean.length !== 6) return null;
+  if (/^(60|68)\d{4}$/.test(clean)) return 'SH';
+  if (/^(00|30)\d{4}$/.test(clean)) return 'SZ';
+  if (/^(83|87|88|43|47)\d{4}$/.test(clean)) return 'BJ';
+  return 'CN';
+};
+
+const tryGetAuthUser = async (req) => {
+  try {
+    const token = getBearerToken(req);
+    if (!token) return null;
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded?.sub;
+    if (!userId) return null;
+    const [rows] = await pool.execute('SELECT id, user_id, username, email, channel FROM users WHERE id = ? LIMIT 1', [userId]);
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return rows[0];
+  } catch {
+    return null;
+  }
+};
+
+const persistAnalysisReportToCache = async ({
+  reportId,
+  startedAt,
+  endedAt,
+  stockCode,
+  market,
+  user,
+  content,
+  reportType,
+  strategyMode
+}) => {
+  try {
+    const now = new Date();
+    const symbolForName = stockCode || 'kline';
+    const baseName = `${symbolForName}-${formatDateYmd(now)}`;
+    let fileName = `${baseName}.json`;
+    let filePath = path.join(cacheDir, fileName);
+    if (fs.existsSync(filePath)) {
+      const suffix = typeof reportId === 'string' && reportId.length > 0 ? reportId.slice(0, 8) : formatTimeHms(now);
+      fileName = `${baseName}-${suffix}.json`;
+      filePath = path.join(cacheDir, fileName);
+    }
+
+    const payload = {
+      reportId,
+      reportType,
+      strategyMode,
+      startedAt,
+      endedAt,
+      stockCode: stockCode || null,
+      market: market || null,
+      userId: user?.user_id ?? null,
+      username: user?.username ?? null,
+      content
+    };
+
+    await fs.promises.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
+    return { ok: true, fileName };
+  } catch (e) {
+    console.error('❌ persist report failed:', e);
+    return { ok: false };
+  }
+};
+
+const persistAnalysisReportToDb = async ({
+  reportId,
+  startedAt,
+  endedAt,
+  stockCode,
+  market,
+  user,
+  content,
+  reportType,
+  strategyMode
+}) => {
+  try {
+    await pool.execute(
+      `INSERT INTO analysis_reports
+        (report_id, user_pk, user_id, report_type, strategy_mode, stock_code, market, stock_name, recommendation, confidence_score, report_json, started_at, ended_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        reportId,
+        user?.id ?? null,
+        user?.user_id ?? null,
+        reportType,
+        strategyMode || null,
+        stockCode || null,
+        market || null,
+        content?.stockName || null,
+        content?.recommendation || null,
+        typeof content?.confidenceScore === 'number' ? content.confidenceScore : null,
+        JSON.stringify(content ?? {}),
+        startedAt ? new Date(startedAt) : null,
+        endedAt ? new Date(endedAt) : null
+      ]
+    );
+    return { ok: true };
+  } catch (e) {
+    console.error('❌ persist report db failed:', e);
+    return { ok: false };
+  }
+};
 
 // ========配置数据============ MySQL 数据库连接池 ====================
 const pool = mysql.createPool({
@@ -43,6 +177,385 @@ pool.getConnection()
   .catch(err => {
     console.error('❌ MySQL 数据库连接失败:', err.message);
   });
+
+const DM_ACCESS_KEY_ID = process.env.ACCESS_KEY_ID || process.env.ALIYUN_ACCESS_KEY_ID;
+const DM_ACCESS_KEY_SECRET = process.env.ACCESS_KEY_SECRET || process.env.ALIYUN_ACCESS_KEY_SECRET;
+const DM_ACCOUNT_NAME = process.env.ACCOUNT_NAME || process.env.ALIYUN_DM_ACCOUNT_NAME;
+const DM_FROM_ALIAS = process.env.FROM_ALIAS || process.env.ALIYUN_DM_FROM_ALIAS || 'deeptrading注册验证';
+const DM_REPLY_ADDRESS = process.env.REPLY_ADDRESS || process.env.ALIYUN_DM_REPLY_ADDRESS || DM_ACCOUNT_NAME;
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET || 'dev-jwt-secret';
+const VERIFICATION_CODE_SECRET = process.env.VERIFICATION_CODE_SECRET || JWT_SECRET;
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const getRequestIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip;
+};
+
+const hashVerificationCode = (code) => {
+  return crypto.createHash('sha256').update(`${code}:${VERIFICATION_CODE_SECRET}`).digest('hex');
+};
+
+const signAuthToken = (user) => {
+  return jwt.sign(
+    { sub: user.id, email: user.email, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
+
+const getBearerToken = (req) => {
+  const header = req.headers.authorization;
+  if (!header || typeof header !== 'string') return null;
+  const [scheme, token] = header.split(' ');
+  if (scheme !== 'Bearer' || !token) return null;
+  return token;
+};
+
+const requireAuth = async (req, res, next) => {
+  try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.auth = decoded;
+    return next();
+  } catch (e) {
+    return res.status(401).json({ error: '登录已过期', code: 'INVALID_TOKEN' });
+  }
+};
+
+async function sendAliyunVerifyEmail(toEmail, verifyCode) {
+  if (!DM_ACCESS_KEY_ID || !DM_ACCESS_KEY_SECRET || !DM_ACCOUNT_NAME) {
+    throw new Error('Aliyun DirectMail env missing');
+  }
+
+  const RPCClient = popCore?.RPCClient || popCore?.default?.RPCClient || popCore?.default || popCore;
+  const client = new RPCClient({
+    accessKeyId: DM_ACCESS_KEY_ID,
+    accessKeySecret: DM_ACCESS_KEY_SECRET,
+    endpoint: 'https://dm.aliyuncs.com',
+    apiVersion: '2015-11-23'
+  });
+
+  const params = {
+    AccountName: DM_ACCOUNT_NAME,
+    FromAlias: DM_FROM_ALIAS,
+    AddressType: 1,
+    ToAddress: toEmail,
+    Subject: '【deeptrading】注册验证码',
+    TextBody: `您的注册验证码是：${verifyCode}，5分钟内有效，请及时填写。`,
+    ReplyToAddress: 'false'
+  };
+
+  return client.request('SingleSendMail', params, { method: 'POST' });
+}
+
+// ==================== Auth APIs ====================
+
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !emailRegex.test(email)) {
+      return res.status(400).json({ error: '邮箱格式不正确', code: 'INVALID_EMAIL' });
+    }
+
+    if (!DM_ACCESS_KEY_ID || !DM_ACCESS_KEY_SECRET || !DM_ACCOUNT_NAME) {
+      return res.status(500).json({ error: '邮件服务未配置', code: 'EMAIL_CONFIG_MISSING' });
+    }
+
+    const purpose = 'register';
+    const [recentRows] = await pool.execute(
+      'SELECT id, created_at FROM email_verification_codes WHERE email = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
+      [email, purpose]
+    );
+
+    if (Array.isArray(recentRows) && recentRows.length > 0) {
+      const lastCreatedAt = new Date(recentRows[0].created_at).getTime();
+      const now = Date.now();
+      const diffSeconds = Math.floor((now - lastCreatedAt) / 1000);
+      if (diffSeconds < 60) {
+        return res.status(429).json({
+          error: '发送太频繁，请稍后再试',
+          code: 'TOO_MANY_REQUESTS',
+          retryAfterSeconds: 60 - diffSeconds
+        });
+      }
+    }
+
+    const verifyCode = String(Math.floor(100000 + Math.random() * 900000));
+    const codeHash = hashVerificationCode(verifyCode);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const requestIp = getRequestIp(req);
+
+    let userId = null;
+    try {
+      const [userRows] = await pool.execute('SELECT user_id FROM users WHERE email = ? LIMIT 1', [email]);
+      if (Array.isArray(userRows) && userRows.length > 0) {
+        userId = userRows[0]?.user_id || null;
+      }
+    } catch {}
+
+    const codeUserId = userId || `pending-${crypto.randomBytes(4).toString('hex')}`;
+
+    const [insertResult] = await pool.execute(
+      'INSERT INTO email_verification_codes (user_id, email, purpose, code_hash, expires_at, request_ip) VALUES (?, ?, ?, ?, ?, ?)',
+      [codeUserId, email, purpose, codeHash, expiresAt, requestIp]
+    );
+
+    try {
+      await sendAliyunVerifyEmail(email, verifyCode);
+    } catch (e) {
+      if (insertResult?.insertId) {
+        await pool.execute('DELETE FROM email_verification_codes WHERE id = ?', [insertResult.insertId]);
+      }
+      const details = {
+        name: e?.name,
+        message: e?.message,
+        code: e?.code,
+        requestId: e?.data?.RequestId || e?.RequestId,
+        aliyunCode: e?.data?.Code,
+        aliyunMessage: e?.data?.Message
+      };
+      console.error('❌ Aliyun DirectMail SingleSendMail failed:', details);
+      return res.status(500).json({ error: '验证码发送失败', code: 'EMAIL_SEND_FAILED', details });
+    }
+
+    return res.json({ ok: true, expiresInSeconds: 300 });
+  } catch (error) {
+    console.error('❌ send-code error:', error);
+    return res.status(500).json({ error: '发送失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  let connection;
+  try {
+    const { username, email, password, code } = req.body || {};
+    if (!username || typeof username !== 'string' || username.trim().length < 2) {
+      return res.status(400).json({ error: '用户名不正确', code: 'INVALID_USERNAME' });
+    }
+    if (!email || typeof email !== 'string' || !emailRegex.test(email)) {
+      return res.status(400).json({ error: '邮箱格式不正确', code: 'INVALID_EMAIL' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ error: '密码至少6位', code: 'INVALID_PASSWORD' });
+    }
+    if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: '验证码不正确', code: 'INVALID_CODE' });
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [existingUsers] = await connection.execute(
+      'SELECT id, username, email FROM users WHERE email = ? OR username = ? LIMIT 1',
+      [email, username]
+    );
+    if (Array.isArray(existingUsers) && existingUsers.length > 0) {
+      await connection.rollback();
+      const existing = existingUsers[0];
+      if (existing.email === email) {
+        return res.status(409).json({ error: '邮箱已注册', code: 'EMAIL_EXISTS' });
+      }
+      return res.status(409).json({ error: '用户名已被占用', code: 'USERNAME_EXISTS' });
+    }
+
+    const purpose = 'register';
+    const [codeRows] = await connection.execute(
+      'SELECT id, code_hash, expires_at, used_at FROM email_verification_codes WHERE email = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
+      [email, purpose]
+    );
+    if (!Array.isArray(codeRows) || codeRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码无效', code: 'INVALID_CODE' });
+    }
+    const latest = codeRows[0];
+    if (latest.used_at) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码已使用', code: 'CODE_USED' });
+    }
+    if (new Date(latest.expires_at).getTime() < Date.now()) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码已过期', code: 'CODE_EXPIRED' });
+    }
+    const inputHash = hashVerificationCode(code);
+    if (inputHash !== latest.code_hash) {
+      await connection.rollback();
+      return res.status(400).json({ error: '验证码错误', code: 'INVALID_CODE' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const tempUserId = `tmp-${crypto.randomBytes(6).toString('hex')}`;
+    const [createResult] = await connection.execute(
+      'INSERT INTO users (user_id, username, email, password_hash, status, channel) VALUES (?, ?, ?, ?, ?, ?)',
+      [tempUserId, username.trim(), email, passwordHash, 'normal', 0]
+    );
+
+    const publicUserId = `dp-${String(createResult.insertId).padStart(6, '0')}`;
+
+    await connection.execute('UPDATE users SET user_id = ? WHERE id = ?', [publicUserId, createResult.insertId]);
+
+    await connection.execute(
+      'UPDATE email_verification_codes SET used_at = NOW(), user_id = ? WHERE id = ?',
+      [publicUserId, latest.id]
+    );
+
+    const user = { id: createResult.insertId, user_id: publicUserId, username: username.trim(), email, channel: 0 };
+    const token = signAuthToken(user);
+
+    await connection.commit();
+    return res.json({ token, user });
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch {}
+    }
+    console.error('❌ register error:', error);
+    return res.status(500).json({ error: '注册失败', code: 'INTERNAL_ERROR' });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body || {};
+    if (!identifier || typeof identifier !== 'string') {
+      return res.status(400).json({ error: '请输入邮箱或用户名', code: 'INVALID_IDENTIFIER' });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: '请输入密码', code: 'INVALID_PASSWORD' });
+    }
+
+    const isEmail = emailRegex.test(identifier);
+    const [rows] = await pool.execute(
+      isEmail
+        ? 'SELECT id, user_id, username, email, password_hash, status, channel FROM users WHERE email = ? LIMIT 1'
+        : 'SELECT id, user_id, username, email, password_hash, status, channel FROM users WHERE username = ? LIMIT 1',
+      [identifier]
+    );
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(401).json({ error: '账号或密码错误', code: 'INVALID_CREDENTIALS' });
+    }
+
+    const userRow = rows[0];
+    if (userRow.status !== 'normal') {
+      return res.status(403).json({ error: '账号已被禁用', code: 'ACCOUNT_DISABLED' });
+    }
+
+    const ok = await bcrypt.compare(password, userRow.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: '账号或密码错误', code: 'INVALID_CREDENTIALS' });
+    }
+
+    await pool.execute('UPDATE users SET last_login_at = NOW() WHERE id = ?', [userRow.id]);
+
+    const user = { id: userRow.id, user_id: userRow.user_id, username: userRow.username, email: userRow.email, channel: userRow.channel };
+    const token = signAuthToken(user);
+    return res.json({ token, user });
+  } catch (error) {
+    console.error('❌ login error:', error);
+    return res.status(500).json({ error: '登录失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth?.sub;
+    const [rows] = await pool.execute(
+      'SELECT id, user_id, username, email, status, channel, last_login_at, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在', code: 'USER_NOT_FOUND' });
+    }
+    return res.json({ user: rows[0] });
+  } catch (error) {
+    console.error('❌ me error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/reports', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+
+    const page = Math.max(1, parseInt(req.query?.page, 10) || 1);
+    const pageSize = Math.min(50, Math.max(1, parseInt(req.query?.pageSize, 10) || 20));
+    const offset = (page - 1) * pageSize;
+
+    const [rows] = await pool.execute(
+      `SELECT report_id, report_type, strategy_mode, stock_code, market, stock_name, recommendation, confidence_score, started_at, ended_at, created_at
+       FROM analysis_reports
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [user.user_id, pageSize, offset]
+    );
+
+    return res.json({
+      page,
+      pageSize,
+      items: Array.isArray(rows) ? rows : []
+    });
+  } catch (error) {
+    console.error('❌ reports list error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/reports/:reportId', requireAuth, async (req, res) => {
+  try {
+    const user = await tryGetAuthUser(req);
+    if (!user?.user_id) {
+      return res.status(401).json({ error: '未登录', code: 'UNAUTHORIZED' });
+    }
+
+    const reportId = req.params?.reportId;
+    if (!reportId) {
+      return res.status(400).json({ error: 'reportId 缺失', code: 'INVALID_REPORT_ID' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT report_id, report_type, strategy_mode, stock_code, market, stock_name, recommendation, confidence_score, report_json, started_at, ended_at, created_at FROM analysis_reports WHERE report_id = ? AND user_id = ? LIMIT 1',
+      [reportId, user.user_id]
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ error: '报告不存在', code: 'REPORT_NOT_FOUND' });
+    }
+    const r = rows[0];
+    let reportJson = r.report_json;
+    if (typeof reportJson === 'string') {
+      try {
+        reportJson = JSON.parse(reportJson);
+      } catch {
+        reportJson = null;
+      }
+    }
+    return res.json({
+      report: {
+        ...r,
+        report_json: reportJson
+      }
+    });
+  } catch (error) {
+    console.error('❌ report detail error:', error);
+    return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
+  }
+});
 
 // ==================== 技术指标计算工具函数 ====================
 
@@ -476,11 +989,13 @@ async function getStockDataWithIndicators(symbol) {
   try {
     // 从连接池获取连接
     connection = await pool.getConnection();
-    
-    const [rows] = await connection.execute(
-      'SELECT * FROM stock_daily WHERE symbol = ? ORDER BY date DESC LIMIT 60',
-      [cleanSymbol]
-    );
+
+    const sql = 'SELECT symbol, name, industry, date, open, high, low, close, pre_close, change_amount, change_percent, volume FROM stock_daily WHERE symbol = ? ORDER BY date DESC LIMIT 60';
+    const startedAt = Date.now();
+
+    const [rows] = await connection.execute(sql, [cleanSymbol]);
+    const elapsedMs = Date.now() - startedAt;
+    console.log(`   ⏱️ 日线数据查询耗时: ${elapsedMs}ms`);
     
     if (!rows || rows.length === 0) {
       console.log(`   ❌ 未找到股票 ${cleanSymbol} 的数据`);
@@ -528,7 +1043,12 @@ async function getStockDataWithIndicators(symbol) {
       rawData: stockData
     };
   } catch (error) {
-    console.error(`   ❌ 查询股票数据失败:`, error.message);
+    console.error('   ❌ 查询股票数据失败:', {
+      code: error?.code,
+      errno: error?.errno,
+      sqlState: error?.sqlState,
+      message: error?.message
+    });
     return null;
   } finally {
     // 确保释放连接回连接池
@@ -659,16 +1179,18 @@ function buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategy
 用户补充: ${userQuery}
 `;
 }
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
 
-// 确保 uploads 目录存在
+/**
+ * 确保 uploads 目录存在
+ */
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// 配置 multer 存储
+/**
+ * 配置 multer 存储
+ */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -773,6 +1295,9 @@ const SYSTEM_INSTRUCTION = `
 app.post('/api/analyze', async (req, res) => {
   try {
     const { prompt, imageBase64, strategyMode } = req.body;
+
+    const requestStartedAt = new Date();
+    const reportId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 
     const extractStockCode = (input) => {
       if (!input || typeof input !== 'string') return null;
@@ -899,6 +1424,33 @@ app.post('/api/analyze', async (req, res) => {
         parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
       }
 
+      const requestEndedAt = new Date();
+      const reportStockCode = parsedData.stockCode || extractStockCode(prompt) || null;
+      const market = inferMarketFromSymbol(reportStockCode);
+      const user = await tryGetAuthUser(req);
+      await persistAnalysisReportToCache({
+        reportId,
+        startedAt: requestStartedAt.toISOString(),
+        endedAt: requestEndedAt.toISOString(),
+        stockCode: reportStockCode,
+        market,
+        user,
+        content: parsedData,
+        reportType: imageBase64 ? 'kline' : 'text',
+        strategyMode
+      });
+      await persistAnalysisReportToDb({
+        reportId,
+        startedAt: requestStartedAt.toISOString(),
+        endedAt: requestEndedAt.toISOString(),
+        stockCode: reportStockCode,
+        market,
+        user,
+        content: parsedData,
+        reportType: imageBase64 ? 'kline' : 'text',
+        strategyMode
+      });
+
       console.log(`   ✅ 分析完成: ${parsedData.stockName} - ${parsedData.recommendation}`);
       return res.json(parsedData);
     }
@@ -940,9 +1492,9 @@ app.get('/api/stock-data/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const cleanSymbol = symbol.replace(/[^0-9]/g, '').trim();
-    
+
     const [rows] = await pool.execute(
-      'SELECT * FROM stock_daily WHERE symbol = ? ORDER BY date DESC LIMIT 60',
+      'SELECT symbol, name, industry, date, open, high, low, close, pre_close, change_amount, change_percent, volume FROM stock_daily WHERE symbol = ? ORDER BY date DESC LIMIT 60',
       [cleanSymbol]
     );
     
@@ -1043,6 +1595,9 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: '请上传 K 线图片' });
     }
 
+    const requestStartedAt = new Date();
+    const reportId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+
     const { strategyMode = 'K线识图策略', prompt = '' } = req.body;
     const extractStockCode = (input) => {
       if (!input || typeof input !== 'string') return null;
@@ -1105,6 +1660,31 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
           parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
         }
 
+        const requestEndedAt = new Date();
+        const user = await tryGetAuthUser(req);
+        await persistAnalysisReportToCache({
+          reportId,
+          startedAt: requestStartedAt.toISOString(),
+          endedAt: requestEndedAt.toISOString(),
+          stockCode: extractStockCode(parsedData.stockCode) || null,
+          market: inferMarketFromSymbol(parsedData.stockCode),
+          user,
+          content: parsedData,
+          reportType: 'kline',
+          strategyMode
+        });
+        await persistAnalysisReportToDb({
+          reportId,
+          startedAt: requestStartedAt.toISOString(),
+          endedAt: requestEndedAt.toISOString(),
+          stockCode: extractStockCode(parsedData.stockCode) || null,
+          market: inferMarketFromSymbol(parsedData.stockCode),
+          user,
+          content: parsedData,
+          reportType: 'kline',
+          strategyMode
+        });
+
         console.log(`✅ K 线分析完成(未合并真实数据): ${parsedData.recommendation}`);
         return res.json(parsedData);
       }
@@ -1142,6 +1722,31 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
       if (!parsedData.newsAnalysis) {
         parsedData.newsAnalysis = buildDemoNewsAnalysis(parsedData.stockName);
       }
+
+      const requestEndedAt = new Date();
+      const user = await tryGetAuthUser(req);
+      await persistAnalysisReportToCache({
+        reportId,
+        startedAt: requestStartedAt.toISOString(),
+        endedAt: requestEndedAt.toISOString(),
+        stockCode: parsedData.stockCode || stockCodeFromImage,
+        market: inferMarketFromSymbol(parsedData.stockCode || stockCodeFromImage),
+        user,
+        content: parsedData,
+        reportType: 'kline',
+        strategyMode
+      });
+      await persistAnalysisReportToDb({
+        reportId,
+        startedAt: requestStartedAt.toISOString(),
+        endedAt: requestEndedAt.toISOString(),
+        stockCode: parsedData.stockCode || stockCodeFromImage,
+        market: inferMarketFromSymbol(parsedData.stockCode || stockCodeFromImage),
+        user,
+        content: parsedData,
+        reportType: 'kline',
+        strategyMode
+      });
 
       console.log(`✅ K 线分析完成: ${parsedData.recommendation}`);
       return res.json(parsedData);

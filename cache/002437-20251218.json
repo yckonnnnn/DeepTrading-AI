@@ -1,0 +1,150 @@
+{
+  "reportId": "0cd0953a-3764-449f-83c1-6d5df7cbb417",
+  "reportType": "text",
+  "strategyMode": "趋势跟踪策略",
+  "startedAt": "2025-12-18T01:56:08.633Z",
+  "endedAt": "2025-12-18T01:56:35.846Z",
+  "stockCode": "002437",
+  "market": "SZ",
+  "userId": "dp-000003",
+  "username": "zack",
+  "content": {
+    "stockName": "誉衡药业",
+    "stockCode": "002437",
+    "timestamp": "2025/12/17 14:23:45",
+    "strategyMode": "趋势跟踪策略",
+    "recommendation": "Wait",
+    "confidenceScore": 62,
+    "analysisSummary": "誉衡药业（002437）当前处于化学制药行业的低位震荡阶段，最新收盘价为3.08元，小幅上涨0.98%，但整体趋势仍偏弱。技术面上，MACD指标显示DIF与DEA在零轴下方形成死叉，绿柱虽有缩量，表明下跌动能有所减弱，但尚未出现明确反转信号。RSI指标为34.42，接近超卖区域，短期存在技术性反弹可能。布林带方面，股价已逼近下轨3.05元附近，当前位置仅偏离下轨约1%，具备一定支撑效应。然而成交量持续低迷，最新成交量23.74万手，显著低于20日均量37.58万手，反映出市场参与意愿不足，资金进场迹象不明显。资金流数据显示连续3日、5日及20日均为净流出状态，累计达-0.06亿元，说明主力资金仍在离场或观望。结合近两周趋势强度为-72，价格下跌天数达5天，仅2天上涨，整体处于弱势下行通道中。尽管局部出现企稳迹象，但在未有效放量突破中轨3.18元前，难以确认趋势逆转。因此当前宜以观望为主，等待更明确的方向选择。",
+    "fundsFlow": {
+      "inflow": "机构资金持续净流出，近20日累计流出0.06亿元，显示主力资金未有回补动作，持仓信心不足。",
+      "retailSentiment": "散户情绪数据缺失，但从成交清淡来看，散户参与度较低，市场热度不足。"
+    },
+    "marketSentiment": "谨慎偏空",
+    "keyDrivers": [
+      "MACD绿柱缩量暗示抛压减轻",
+      "股价接近布林带下轨获得技术支撑",
+      "成交量持续萎缩反映市场观望情绪浓厚"
+    ],
+    "technicalIndicators": [
+      {
+        "name": "RSI",
+        "value": "接近超卖",
+        "status": "短期超卖状态",
+        "signal": "RSI降至34.42，接近30临界值，短期卖压趋缓，可能出现修复性反弹。",
+        "sentiment": "neutral"
+      },
+      {
+        "name": "MACD",
+        "value": "死叉下行",
+        "status": "空头排列中",
+        "signal": "DIF与DEA均位于零轴下方且绿柱缩短，空头趋势延续但动能减弱。",
+        "sentiment": "bearish"
+      },
+      {
+        "name": "布林带",
+        "value": "触碰下轨",
+        "status": "接近支撑位",
+        "signal": "价格运行至布林带下轨附近，历史数据显示该位置常有短暂反弹。",
+        "sentiment": "neutral"
+      }
+    ],
+    "technicalAnalysisAdvice": {
+      "points": [
+        "关注3.05元布林带下轨支撑有效性，若能守住或引发短线反弹。",
+        "观察MACD是否出现绿柱进一步缩窄甚至翻红，作为止跌信号。",
+        "需警惕成交量无法放大情况下，反弹缺乏持续性的风险。"
+      ],
+      "summary": "当前技术面呈现**下跌动能减弱+关键支撑临近**的组合，适合密切关注但不宜贸然介入。"
+    },
+    "strategy": {
+      "action": "暂时观望，等待方向确认",
+      "entryRange": "3.05-3.10元（支撑区企稳后轻仓试多）",
+      "targetPrice": "3.31元（布林带上轨压力位）",
+      "stopLoss": "2.98元（跌破前低止损）",
+      "logic": {
+        "points": [
+          "当前处于下降趋势中的低位盘整，未现强势反转信号。",
+          "只有在成交量温和放大并站上中轨3.18元时，才可视为趋势改善。",
+          "目标设定于布林带上轨3.31元，对应前期阻力区。"
+        ],
+        "riskWarning": "若继续缩量阴跌或跌破3.00心理关口，可能开启新一轮下行。"
+      }
+    },
+    "newsAnalysis": {
+      "sentimentScore": 50,
+      "news": [
+        {
+          "title": "暂无重大公告或新闻事件",
+          "sentiment": "neutral"
+        }
+      ],
+      "summary": "近期无显著利好或利空消息驱动，股价走势主要由技术面和资金情绪主导。"
+    },
+    "realData": {
+      "stockInfo": {
+        "symbol": "002437",
+        "name": "誉衡药业",
+        "industry": "化学制药",
+        "latestDate": "2025-12-17",
+        "latestPrice": 3.08,
+        "open": 3.04,
+        "high": 3.08,
+        "low": 3.02,
+        "preClose": 3.05,
+        "changeAmount": 0.03,
+        "changePercent": 0.9836
+      },
+      "indicators": {
+        "macd": {
+          "dif": "-0.056",
+          "dea": "-0.041",
+          "histogram": "-0.030",
+          "status": "绿柱缩量",
+          "interpretation": "MACD死叉且在零轴下方，空头趋势明显，绿柱缩小，下跌动能减弱",
+          "sentiment": "bearish"
+        },
+        "rsi": {
+          "value": "34.42",
+          "status": "接近超卖",
+          "interpretation": "短期下跌动能趋缓，关注反弹机会",
+          "sentiment": "neutral"
+        },
+        "bollingerBands": {
+          "upper": "3.31",
+          "middle": "3.18",
+          "lower": "3.05",
+          "currentPosition": "11.2%",
+          "status": "接近下轨",
+          "interpretation": "价格接近布林带下轨，关注支撑位",
+          "sentiment": "neutral"
+        },
+        "volume": {
+          "latest": "23.74万",
+          "avg5": "26.30万",
+          "avg20": "37.58万",
+          "changePercent": "-18.22%",
+          "status": "成交清淡",
+          "interpretation": "成交量低于20日均量，观望情绪浓厚",
+          "sentiment": "neutral"
+        },
+        "trendStrength": {
+          "strength": "-72",
+          "periodChange": "-4.35%",
+          "upDays": 2,
+          "downDays": 5,
+          "status": "弱势下跌",
+          "interpretation": "近两周跌幅-4.35%，下跌5天，短期趋势疲弱",
+          "sentiment": "bearish"
+        }
+      }
+    },
+    "moneyFlowMonitor": {
+      "tradeDate": "2025-12-15T16:00:00.000Z",
+      "netInflow3d": -0.06018099999999999,
+      "netInflow5d": -0.06018099999999999,
+      "netInflow20d": -0.06018099999999999,
+      "retailSentimentRatio": null
+    }
+  }
+}

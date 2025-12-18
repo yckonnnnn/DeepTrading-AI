@@ -68,16 +68,17 @@ const HighlightText = ({ text, className = "" }: { text: string; className?: str
 
 interface LockedOverlayProps {
     onSubscribe: () => void;
+    description: string;
 }
 
-const LockedOverlay: React.FC<LockedOverlayProps> = ({ onSubscribe }) => (
+const LockedOverlay: React.FC<LockedOverlayProps> = ({ onSubscribe, description }) => (
     <div className="absolute inset-0 z-20 backdrop-blur-md bg-white/40 flex flex-col items-center justify-center rounded-[2rem] border border-white/20">
         <div className="w-14 h-14 bg-black rounded-full flex items-center justify-center shadow-lg mb-4">
             <Lock className="text-lime-300" size={24} />
         </div>
         <h4 className="text-xl font-bold text-gray-900 mb-2">Pro 会员专享内容</h4>
         <p className="text-gray-500 font-medium text-sm mb-6 max-w-xs text-center">
-            解锁主力资金流向、精准买卖点位及策略逻辑分析。
+            {description}
         </p>
         <button 
             onClick={onSubscribe}
@@ -1196,7 +1197,12 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
               {/* Strategy Execution */}
               <div className="bg-white rounded-[2rem] p-5 md:p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col relative overflow-hidden h-fit">
-                  {isLocked && <LockedOverlay onSubscribe={onSubscribe} />}
+                  {isLocked && (
+                    <LockedOverlay
+                      onSubscribe={onSubscribe}
+                      description="解锁精准买卖点位、建仓区间、止盈止损与策略逻辑推演。"
+                    />
+                  )}
                   
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-8">
@@ -1275,7 +1281,12 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
               {/* 资金与情绪监控 */}
               <div className="bg-white rounded-[2rem] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100 relative overflow-hidden">
-                  {isLocked && <LockedOverlay onSubscribe={onSubscribe} />}
+                  {isLocked && (
+                    <LockedOverlay
+                      onSubscribe={onSubscribe}
+                      description="解锁主力资金净流入、3/5/20 日资金趋势与散户情绪监控。"
+                    />
+                  )}
 
                   {(() => {
                     const m = data.moneyFlowMonitor;

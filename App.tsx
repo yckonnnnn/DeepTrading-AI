@@ -30,6 +30,7 @@ import Feedback from './components/Feedback';
 import ContactUs from './components/ContactUs'; 
 import LandingPage from './components/LandingPage';
 import Auth from './components/Auth'; // New Import
+import TermsPage from './components/TermsPage';
 import { TabId, AIAnalysisReport, UserTier } from './types';
 
 // --- Mock Data ---
@@ -155,12 +156,13 @@ interface UserProfileCardProps {
   isOpen: boolean;
   onClose: () => void;
   userTier: UserTier;
+  authUser: { user_id?: string | null; username?: string | null; email?: string | null } | null;
   onSubscribe: () => void;
   onSettings: () => void;
   onLogout: () => void;
 }
 
-const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, userTier, onSubscribe, onSettings, onLogout }) => {
+const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, userTier, authUser, onSubscribe, onSettings, onLogout }) => {
   if (!isOpen) return null;
 
   const getTierStyle = () => {
@@ -173,6 +175,10 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, user
 
   const style = getTierStyle();
   const TierIcon = style.icon;
+
+  const displayName = userTier === 'guest' ? '访客' : (authUser?.username || '用户');
+  const displayEmail = userTier === 'guest' ? '' : (authUser?.email || '');
+  const avatarSeed = userTier === 'guest' ? 'Guest' : (authUser?.username || 'User');
 
   return (
     <div className="absolute top-14 right-0 w-[calc(100vw-2rem)] md:w-80 bg-white rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] border border-gray-100 z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
@@ -187,7 +193,7 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, user
          <div className="flex justify-between items-end -mt-10 mb-4">
             <div className="relative">
                <div className="w-20 h-20 rounded-full border-4 border-white shadow-md overflow-hidden bg-gray-100">
-                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userTier === 'guest' ? 'Guest' : 'Alex'}`} alt="avatar" className="w-full h-full" />
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeed}`} alt="avatar" className="w-full h-full" />
                </div>
                <div className={`absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full text-[10px] font-bold border-2 border-white flex items-center gap-1 ${style.bg}`}>
                   <TierIcon size={10} strokeWidth={3} />
@@ -206,8 +212,10 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ isOpen, onClose, user
 
          {/* Info */}
          <div className="mb-6">
-            <h3 className="text-lg font-bold text-gray-900">Alex Chen</h3>
-            <p className="text-xs text-gray-400 font-medium">alex.trader@limefinance.com</p>
+            <h3 className="text-lg font-bold text-gray-900">{displayName}</h3>
+            {displayEmail ? (
+              <p className="text-xs text-gray-400 font-medium">{displayEmail}</p>
+            ) : null}
          </div>
 
          {/* Usage Stats */}
@@ -267,6 +275,8 @@ interface HeaderProps {
   title: string;
   userTier: UserTier;
   setUserTier: (tier: UserTier) => void;
+  isAdmin: boolean;
+  authUser: { user_id?: string | null; username?: string | null; email?: string | null } | null;
   onSubscribe: () => void;
   onSettings: () => void;
   onVisitWebsite: () => void;
@@ -280,6 +290,8 @@ const Header = ({
   title, 
   userTier, 
   setUserTier, 
+  isAdmin,
+  authUser,
   onSubscribe, 
   onSettings,
   onVisitWebsite,
@@ -321,27 +333,28 @@ const Header = ({
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 px-1 md:px-2 gap-4 relative z-50" ref={headerRef}>
       <div>
         <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-        <p className="text-gray-400 text-sm mt-1 font-medium">欢迎回来, {userTier === 'guest' ? '访客' : 'Alex'}</p>
+        <p className="text-gray-400 text-sm mt-1 font-medium">欢迎回来, {userTier === 'guest' ? '访客' : (authUser?.username || '用户')}</p>
       </div>
       <div className="flex items-center gap-2 md:gap-4 relative w-full md:w-auto justify-between md:justify-end">
         
-        {/* TEST CONTROLS */}
-        <div className="bg-white border border-gray-200 rounded-lg p-1 flex items-center shadow-sm">
-           <span className="text-xs font-bold text-gray-400 px-2 uppercase tracking-wider hidden sm:inline">Test Mode:</span>
-           {(['guest', 'free', 'pro'] as UserTier[]).map((tier) => (
-              <button
-                key={tier}
-                onClick={() => setUserTier(tier)}
-                className={`px-2 md:px-3 py-1 rounded-md text-xs font-bold capitalize transition-all ${
-                  userTier === tier 
-                  ? 'bg-black text-white shadow-sm' 
-                  : 'text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {tier}
-              </button>
-           ))}
-        </div>
+        {isAdmin && (
+          <div className="bg-white border border-gray-200 rounded-lg p-1 flex items-center shadow-sm">
+             <span className="text-xs font-bold text-gray-400 px-2 uppercase tracking-wider hidden sm:inline">Test Mode:</span>
+             {(['guest', 'free', 'pro'] as UserTier[]).map((tier) => (
+                <button
+                  key={tier}
+                  onClick={() => setUserTier(tier)}
+                  className={`px-2 md:px-3 py-1 rounded-md text-xs font-bold capitalize transition-all ${
+                    userTier === tier 
+                    ? 'bg-black text-white shadow-sm' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {tier}
+                </button>
+             ))}
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           {/* Visit Website Button (Hidden on Mobile) */}
@@ -381,7 +394,7 @@ const Header = ({
               onClick={toggleProfile}
               className={`w-10 h-10 rounded-full overflow-hidden border-2 shadow-md cursor-pointer transition-all flex-shrink-0 relative ${showProfile ? 'ring-2 ring-lime-300 border-lime-300' : 'border-white hover:ring-2 hover:ring-lime-100'}`}
             >
-              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userTier === 'guest' ? 'Guest' : 'Alex'}`} alt="avatar" />
+              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userTier === 'guest' ? 'Guest' : (authUser?.username || 'User')}`} alt="avatar" />
               {userTier === 'pro' && (
                 <div className="absolute bottom-0 right-0 w-4 h-4 bg-lime-400 border-2 border-white rounded-full flex items-center justify-center">
                     <Crown size={8} className="text-black" />
@@ -392,6 +405,7 @@ const Header = ({
               isOpen={showProfile} 
               onClose={() => setShowProfile(false)}
               userTier={userTier}
+              authUser={authUser}
               onSubscribe={onSubscribe}
               onSettings={onSettings}
               onLogout={onLogout}
@@ -405,12 +419,14 @@ const Header = ({
 };
 
 // Route View Type
-type AppView = 'landing' | 'login' | 'register' | 'app';
+type AppView = 'landing' | 'login' | 'register' | 'terms' | 'app';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [userTier, setUserTier] = useState<UserTier>('free'); 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authUser, setAuthUser] = useState<{ user_id?: string | null; username?: string | null; email?: string | null; channel?: number | null } | null>(null);
   const [history, setHistory] = useState<AIAnalysisReport[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>(MOCK_NOTIFICATIONS);
   const [targetReportId, setTargetReportId] = useState<string | null>(null);
@@ -420,25 +436,81 @@ const App: React.FC = () => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (currentView !== 'app') return;
+
+    const API_BASE_URL = 'http://localhost:3001';
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setIsAdmin(false);
+      setAuthUser(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (!cancelled) {
+            setIsAdmin(false);
+            setAuthUser(null);
+            localStorage.removeItem('auth_channel');
+          }
+          return;
+        }
+
+        const channel = data?.user?.channel;
+        const admin = channel === 1;
+        if (!cancelled) {
+          setIsAdmin(admin);
+          setAuthUser(data?.user || null);
+          if (typeof channel === 'number') {
+            localStorage.setItem('auth_channel', String(channel));
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAdmin(false);
+          setAuthUser(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentView]);
+
   // --- Handlers ---
   
   const handleLoginSuccess = () => {
     setUserTier('free');
+    setIsAdmin(false);
+    setAuthUser(null);
     setCurrentView('app');
   };
 
   const handleGuestLogin = () => {
     setUserTier('guest');
+    setIsAdmin(false);
+    setAuthUser(null);
     setCurrentView('app');
   };
   
   // Handler for direct Pro access from Landing Page
   const handleDirectProAccess = () => {
-    setUserTier('pro');
-    setCurrentView('app');
+    setCurrentView('register');
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_channel');
+    setIsAdmin(false);
+    setAuthUser(null);
     setCurrentView('landing');
     setActiveTab('dashboard'); // Reset tab
   };
@@ -511,6 +583,10 @@ const App: React.FC = () => {
     );
   }
 
+  if (currentView === 'terms') {
+    return <TermsPage onBack={() => setCurrentView('register')} />;
+  }
+
   // --- Main App ---
 
   const renderContent = () => {
@@ -533,11 +609,18 @@ const App: React.FC = () => {
           />
         );
       case 'history':
-        return <HistoryView history={history} targetReportId={targetReportId} />;
+        return (
+          <HistoryView
+            history={history}
+            targetReportId={targetReportId}
+            userTier={userTier}
+            onSubscribe={handleSubscribe}
+          />
+        );
       case 'subscription':
         return <Subscription />;
       case 'settings':
-        return <Settings />;
+        return <Settings authUser={authUser} />;
       case 'announcements':
         return <Announcements />;
       case 'featured':
@@ -584,6 +667,8 @@ const App: React.FC = () => {
           title={getPageTitle()} 
           userTier={userTier} 
           setUserTier={setUserTier} 
+          isAdmin={isAdmin}
+          authUser={authUser}
           onSubscribe={handleSubscribe}
           onSettings={handleSettings}
           onVisitWebsite={() => setCurrentView('landing')}

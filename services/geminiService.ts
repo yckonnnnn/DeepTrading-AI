@@ -11,9 +11,13 @@ export const generateStockAnalysis = async (
   strategyMode: string
 ): Promise<AIAnalysisReport | null> => {
   try {
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({ prompt, imageBase64, strategyMode }),
     });
 
@@ -50,6 +54,7 @@ export const analyzeKlineImage = async (
   prompt: string = ""
 ): Promise<AIAnalysisReport | null> => {
   try {
+    const token = localStorage.getItem('auth_token');
     const formData = new FormData();
     formData.append("image", imageFile);
     formData.append("strategyMode", strategyMode);
@@ -61,6 +66,7 @@ export const analyzeKlineImage = async (
 
     const response = await fetch(KLINE_API_URL, {
       method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: formData, // FormData 会自动设置 Content-Type
     });
 

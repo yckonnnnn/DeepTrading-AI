@@ -1,13 +1,9 @@
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Mail, 
   Lock, 
   User, 
   ArrowRight, 
-  Github, 
-  Twitter, 
-  Chrome, 
   Eye, 
   EyeOff,
   ChevronLeft,
@@ -18,40 +14,140 @@ import {
 import Logo from './Logo';
 
 type AuthView = 'login' | 'register';
+type AppView = 'landing' | 'login' | 'register' | 'terms';
 
 interface AuthProps {
   initialView: AuthView;
   onLoginSuccess: () => void;
   onGuestLogin: () => void;
-  onNavigateTo: (view: 'landing' | 'login' | 'register') => void;
+  onNavigateTo: (view: AppView) => void;
 }
 
 const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, onNavigateTo }) => {
   const [view, setView] = useState<AuthView>(initialView);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   // Form States
   const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  const API_BASE_URL = 'http://localhost:3001';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((v) => (v > 0 ? v - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
 
   // Handle View Switch
   const switchView = (newView: AuthView) => {
     setView(newView);
+    setErrorMessage(null);
+    setSuccessMessage(null);
     // Sync with parent nav if needed, or just handle local visual switch
     // For URL-less navigation, local state is usually enough unless parent needs to know
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const sendVerificationCode = async () => {
+    setErrorMessage(null);
+    if (!email || !emailRegex.test(email)) {
+      setErrorMessage('请输入正确的邮箱地址');
+      return;
+    }
+    if (cooldownSeconds > 0) return;
+
+    setIsSendingCode(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/send-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const retryAfter = typeof data?.retryAfterSeconds === 'number' ? data.retryAfterSeconds : null;
+        if (response.status === 429 && retryAfter) {
+          setCooldownSeconds(retryAfter);
+        }
+        setErrorMessage(data?.error || '验证码发送失败');
+        return;
+      }
+
+      setCooldownSeconds(60);
+    } catch (e) {
+      setErrorMessage('验证码发送失败');
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
     
-    // Simulate API Call
-    setTimeout(() => {
+    try {
+      if (view === 'login') {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, password })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setErrorMessage(data?.error || '登录失败');
+          return;
+        }
+
+        if (data?.token) {
+          localStorage.setItem('auth_token', data.token);
+        }
+        if (typeof data?.user?.channel === 'number') {
+          localStorage.setItem('auth_channel', String(data.user.channel));
+        }
+        onLoginSuccess();
+        return;
+      }
+
+      if (!agreeTerms) {
+        setErrorMessage('请先阅读并同意服务条款与免责声明');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name, email, password, code: verificationCode })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErrorMessage(data?.error || '注册失败');
+        return;
+      }
+
+      setSuccessMessage('注册成功，请使用邮箱或账号密码登录');
+      setIdentifier(email);
+      setPassword('');
+      setVerificationCode('');
+      setAgreeTerms(false);
+      setView('login');
+    } finally {
       setIsLoading(false);
-      onLoginSuccess();
-    }, 1500);
+    }
   };
 
   const isLogin = view === 'login';
@@ -105,19 +201,43 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
             )}
 
             <div className="space-y-1.5">
-               <label className="text-sm font-bold text-gray-700 ml-1">电子邮箱</label>
+               <label className="text-sm font-bold text-gray-700 ml-1">{isLogin ? '邮箱或用户名' : '电子邮箱'}</label>
                <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors" size={20} />
                   <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
+                    type={isLogin ? "text" : "email"}
+                    value={isLogin ? identifier : email}
+                    onChange={(e) => (isLogin ? setIdentifier(e.target.value) : setEmail(e.target.value))}
+                    placeholder={isLogin ? "name@example.com 或用户名" : "name@example.com"}
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-12 pr-4 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
                     required
                   />
                </div>
             </div>
+
+            {!isLogin && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center ml-1">
+                  <label className="text-sm font-bold text-gray-700">验证码</label>
+                  <button
+                    type="button"
+                    onClick={sendVerificationCode}
+                    disabled={isSendingCode || cooldownSeconds > 0 || !email}
+                    className="text-xs font-bold text-lime-600 hover:text-lime-700 hover:underline disabled:opacity-50 disabled:hover:no-underline"
+                  >
+                    {cooldownSeconds > 0 ? `重新发送(${cooldownSeconds}s)` : (isSendingCode ? '发送中...' : '获取验证码')}
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  placeholder="6位验证码"
+                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-4 font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-lime-300 focus:bg-white transition-all"
+                  required={!isLogin}
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
                <div className="flex justify-between items-center ml-1">
@@ -164,23 +284,45 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
                 </>
               )}
             </button>
+
+            {errorMessage && (
+              <div className="bg-red-50 border border-red-100 text-red-700 rounded-2xl px-4 py-3 text-sm font-bold">
+                {errorMessage}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="bg-lime-50 border border-lime-100 text-lime-800 rounded-2xl px-4 py-3 text-sm font-bold">
+                {successMessage}
+              </div>
+            )}
+
+            {!isLogin && (
+              <div className="pt-2">
+                <label className="flex items-start gap-3 select-none">
+                  <input
+                    type="checkbox"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                    className="mt-1 h-5 w-5 rounded border-gray-300 text-lime-600 focus:ring-lime-300"
+                  />
+                  <div className="text-sm text-gray-600 font-medium leading-relaxed">
+                    我已阅读并同意
+                    <button
+                      type="button"
+                      onClick={() => onNavigateTo('terms')}
+                      className="text-lime-600 font-bold hover:underline underline-offset-4 mx-1"
+                    >
+                      《服务条款与免责声明》
+                    </button>
+                    <div className="text-xs text-gray-400 font-medium mt-1">
+                      注册即表示您已充分了解并接受我们的服务条款和免责声明
+                    </div>
+                  </div>
+                </label>
+              </div>
+            )}
           </form>
-
-          {/* Social Login */}
-          <div className="my-8 flex items-center gap-4">
-             <div className="h-px bg-gray-100 flex-1"></div>
-             <span className="text-xs font-bold text-gray-400">或者使用</span>
-             <div className="h-px bg-gray-100 flex-1"></div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-             <button className="flex items-center justify-center gap-2 py-3 border-2 border-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-50 hover:border-gray-200 transition-all">
-                <Chrome size={20} /> Google
-             </button>
-             <button className="flex items-center justify-center gap-2 py-3 border-2 border-gray-100 rounded-xl font-bold text-gray-600 hover:bg-gray-50 hover:border-gray-200 transition-all">
-                <Twitter size={20} /> Twitter
-             </button>
-          </div>
 
           {/* Guest Access Button */}
           <div className="mt-6">

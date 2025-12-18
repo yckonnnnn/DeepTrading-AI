@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
+    "@alicloud/pop-core": "^1.7.14",
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "html2canvas": "1.4.1",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.559.0",
     "multer": "^2.0.2",
     "mysql2": "^3.15.3",

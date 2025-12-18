@@ -7,9 +7,11 @@ import AnalysisDashboard from './AnalysisDashboard';
 interface HistoryProps {
   history: AIAnalysisReport[];
   targetReportId?: string | null;
+  userTier: 'guest' | 'free' | 'pro';
+  onSubscribe: () => void;
 }
 
-const HistoryView: React.FC<HistoryProps> = ({ history, targetReportId }) => {
+const HistoryView: React.FC<HistoryProps> = ({ history, targetReportId, userTier, onSubscribe }) => {
   const [selectedReport, setSelectedReport] = useState<AIAnalysisReport | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'All' | 'Buy' | 'Sell' | 'Wait'>('All');
@@ -54,7 +56,7 @@ const HistoryView: React.FC<HistoryProps> = ({ history, targetReportId }) => {
           </div>
           返回列表
         </button>
-        <AnalysisDashboard data={selectedReport} />
+        <AnalysisDashboard data={selectedReport} userTier={userTier} onSubscribe={onSubscribe} />
       </div>
     );
   }

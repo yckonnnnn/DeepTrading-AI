@@ -17,9 +17,17 @@ import {
   Camera
 } from 'lucide-react';
 
-const Settings = () => {
+interface SettingsProps {
+  authUser: { username?: string | null; email?: string | null } | null;
+}
+
+const Settings = ({ authUser }: SettingsProps) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences'>('profile');
   const [showPassword, setShowPassword] = useState(false);
+
+  const displayName = authUser?.username || '用户';
+  const displayEmail = authUser?.email || '';
+  const avatarSeed = authUser?.username || 'User';
 
   const renderContent = () => {
     switch(activeTab) {
@@ -29,14 +37,14 @@ const Settings = () => {
              <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col md:flex-row items-center gap-8">
                 <div className="relative group cursor-pointer">
                    <div className="w-32 h-32 rounded-full border-4 border-gray-50 overflow-hidden shadow-inner">
-                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" alt="avatar" className="w-full h-full" />
+                     <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeed}`} alt="avatar" className="w-full h-full" />
                    </div>
                    <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
                       <Camera className="text-white" />
                    </div>
                 </div>
                 <div className="flex-1 text-center md:text-left">
-                   <h3 className="text-2xl font-bold text-gray-900 mb-1">Alex Chen</h3>
+                   <h3 className="text-2xl font-bold text-gray-900 mb-1">{displayName}</h3>
                    <p className="text-gray-500 font-medium mb-4">Pro Member • Member since 2023</p>
                    <div className="flex gap-3 justify-center md:justify-start">
                       <button className="px-5 py-2 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-colors shadow-lg shadow-black/10">
@@ -56,13 +64,13 @@ const Settings = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">用户名</label>
-                      <input type="text" defaultValue="AlexTrader" className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                      <input type="text" defaultValue={displayName} className="w-full p-4 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                    </div>
                    <div className="space-y-2">
                       <label className="text-sm font-bold text-gray-500 ml-1">电子邮箱</label>
                       <div className="relative">
                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                         <input type="email" defaultValue="alex.trader@limefinance.com" className="w-full p-4 pl-12 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
+                         <input type="email" defaultValue={displayEmail} className="w-full p-4 pl-12 bg-gray-50 rounded-xl font-bold text-gray-800 border-none focus:ring-2 focus:ring-lime-300 transition-all" />
                       </div>
                    </div>
                    <div className="space-y-2">

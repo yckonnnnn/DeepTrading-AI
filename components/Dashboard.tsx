@@ -60,6 +60,7 @@ type UsageSummary = {
   quotaLimit: number | null;
   remainingSuccess: number | null;
   historyCount: number;
+  isUnlimited?: boolean;
 };
 
 type UsageTrendItem = { date: string; count: number };
@@ -68,11 +69,14 @@ type UsageTrendItem = { date: string; count: number };
 
 interface MembershipCardProps {
   tier: UserTier;
+  isAdmin: boolean;
+  subscription?: any;
+  usagePercent: number;
   onSubscribe: () => void;
 }
 
-const MembershipCard: React.FC<MembershipCardProps> = ({ tier, onSubscribe }) => {
-  if (tier === 'pro') {
+const MembershipCard: React.FC<MembershipCardProps> = ({ tier, isAdmin, subscription, usagePercent, onSubscribe }) => {
+  if (isAdmin) {
     return (
       <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-[2rem] p-8 text-white relative overflow-hidden h-full min-h-[300px] flex flex-col justify-between shadow-2xl shadow-gray-200 animate-in fade-in duration-500">
         <div className="absolute top-0 right-0 w-64 h-64 bg-lime-400 rounded-full blur-[80px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
@@ -109,6 +113,54 @@ const MembershipCard: React.FC<MembershipCardProps> = ({ tier, onSubscribe }) =>
     );
   }
 
+  if (tier === 'pro') {
+    const planCode = typeof subscription?.plan_code === 'string' ? subscription.plan_code : null;
+    const proTitle = planCode === 'weekly' ? 'Pro周会员' : planCode === 'monthly' ? 'Pro月会员' : planCode === 'yearly' ? 'Pro年会员' : '专业版会员';
+    const periodLabel = planCode === 'weekly' ? '本周权益使用' : planCode === 'yearly' ? '本年权益使用' : '本月权益使用';
+    const end = subscription?.current_period_end ? new Date(subscription.current_period_end) : null;
+    const endText = end && !Number.isNaN(end.getTime())
+      ? `有效期至 ${end.getFullYear()}年${String(end.getMonth() + 1).padStart(2, '0')}月${String(end.getDate()).padStart(2, '0')}日`
+      : null;
+
+    return (
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-[2rem] p-8 text-white relative overflow-hidden h-full min-h-[300px] flex flex-col justify-between shadow-2xl shadow-gray-200 animate-in fade-in duration-500">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-lime-400 rounded-full blur-[80px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
+        
+        <div className="relative z-10">
+            <div className="flex justify-between items-start mb-8">
+              <div className="bg-white/10 backdrop-blur-md px-3 py-1 rounded-lg border border-white/20 flex items-center gap-2">
+                <Crown size={14} className="text-lime-300" />
+                <span className="text-xs font-bold text-lime-300 tracking-wider">PRO PLAN</span>
+              </div>
+              <button className="text-gray-400 hover:text-white transition-colors bg-white/5 p-2 rounded-full hover:bg-white/10">
+                <Settings size={20} />
+              </button>
+            </div>
+            
+            <h2 className="text-3xl font-bold mb-2">{proTitle}</h2>
+            {endText ? <p className="text-gray-400 text-sm">{endText}</p> : <p className="text-gray-400 text-sm">&nbsp;</p>}
+        </div>
+
+        <div className="relative z-10">
+            <div className="flex justify-between text-sm mb-3">
+               <span className="text-gray-300 font-medium">{periodLabel}</span>
+               <span className="text-lime-300 font-bold">{usagePercent}%</span>
+            </div>
+            <div className="w-full bg-gray-700 h-2.5 rounded-full overflow-hidden mb-4">
+               <div
+                 className="bg-lime-300 h-full rounded-full shadow-[0_0_10px_rgba(190,242,100,0.5)]"
+                 style={{ width: `${Math.min(100, Math.max(0, usagePercent))}%` }}
+               ></div>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500 bg-black/20 w-fit px-3 py-1.5 rounded-lg border border-white/5">
+               <Zap size={12} className="text-lime-300" /> 
+               <span>下月自动续费，享 8 折优惠</span>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
   // Free / Guest View
   return (
     <div className="bg-white rounded-[2rem] p-8 relative overflow-hidden h-full min-h-[300px] flex flex-col justify-between border border-gray-100 shadow-sm animate-in fade-in duration-500">
@@ -135,11 +187,11 @@ const MembershipCard: React.FC<MembershipCardProps> = ({ tier, onSubscribe }) =>
 
       <div className="relative z-10">
           <div className="flex justify-between text-sm mb-3">
-             <span className="text-gray-500 font-medium">今日免费额度</span>
-             <span className="text-black font-bold">0/3</span>
+             <span className="text-gray-500 font-medium">权益使用进度</span>
+             <span className="text-black font-bold">{usagePercent}%</span>
           </div>
           <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-6">
-             <div className="bg-gray-300 h-full w-[10%] rounded-full"></div>
+             <div className="bg-gray-300 h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, usagePercent))}%` }}></div>
           </div>
           
           <button 
@@ -158,12 +210,14 @@ const StatsGrid = ({
   remainingSuccess,
   quotaLimit,
   historyCount,
-  isDemo
+  isDemo,
+  isUnlimited
 }: {
   remainingSuccess: number | null;
   quotaLimit: number | null;
   historyCount: number;
   isDemo: boolean;
+  isUnlimited: boolean;
 }) => (
   <div className="grid grid-rows-2 gap-6 h-full min-h-[300px]">
     {/* Remaining Credits */}
@@ -177,12 +231,14 @@ const StatsGrid = ({
          <span className="text-xs font-bold bg-white/40 px-2 py-1 rounded-lg text-black/80 backdrop-blur-sm">可用</span>
        </div>
        
-       <div className="relative z-10">
-         <div className="flex items-baseline gap-1">
-            <h3 className="text-4xl font-extrabold text-black tracking-tight">
-              {quotaLimit == null && !isDemo ? '∞' : (remainingSuccess ?? 0)}
+       <div className="relative z-10 overflow-hidden">
+         <div className="flex items-baseline gap-1 overflow-hidden">
+            <h3 className="text-4xl font-extrabold text-black tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+              {isUnlimited && !isDemo ? '不限次数' : (remainingSuccess ?? 0)}
             </h3>
-            <span className="text-sm font-bold text-black/60">/ {quotaLimit == null ? (isDemo ? 100 : '∞') : quotaLimit}</span>
+            <span className="text-sm font-bold text-black/60 whitespace-nowrap">
+              / {isUnlimited && !isDemo ? '不限次数' : (quotaLimit ?? (isDemo ? 100 : 0))}
+            </span>
          </div>
          <p className="text-black/70 font-bold text-xs mt-1">剩余分析次数</p>
        </div>
@@ -421,11 +477,14 @@ const QuickActions: React.FC<QuickActionsProps> = ({ onAnalyze }) => (
 
 interface DashboardProps {
   userTier: UserTier;
+  isAdmin: boolean;
+  subscription?: any;
+  quota?: any;
   onSubscribe: () => void;
   onAnalyze: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ userTier, onSubscribe, onAnalyze }) => {
+const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, quota, onSubscribe, onAnalyze }) => {
   const API_BASE_URL = 'http://localhost:3001';
   const isDemo = userTier === 'guest';
   const [days, setDays] = useState(7);
@@ -446,6 +505,22 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, onSubscribe, onAnalyze 
     if (isDemo) return 1240;
     return typeof summary?.historyCount === 'number' ? summary.historyCount : 0;
   }, [isDemo, summary]);
+
+  const isUnlimited = useMemo(() => {
+    if (isDemo) return false;
+    return Boolean(summary?.isUnlimited);
+  }, [isDemo, summary]);
+
+  const usagePercent = useMemo(() => {
+    if (isAdmin) return 85;
+    if (isDemo) return 10;
+    const used = Math.max(0, historyCount || 0);
+    const remain = Math.max(0, remainingSuccess || 0);
+    const total = used + remain;
+    if (total <= 0) return 0;
+    const pct = Math.round((used / total) * 100);
+    return Math.min(100, Math.max(0, pct));
+  }, [historyCount, isAdmin, isDemo, remainingSuccess]);
 
   useEffect(() => {
     if (isDemo) {
@@ -506,10 +581,10 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, onSubscribe, onAnalyze 
       {/* Top Row: Adjusted Proportions (4:3:5) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:h-[300px]">
         <div className="col-span-1 lg:col-span-12 xl:col-span-4 h-full">
-          <MembershipCard tier={userTier} onSubscribe={onSubscribe} />
+          <MembershipCard tier={userTier} isAdmin={isAdmin} subscription={subscription} usagePercent={usagePercent} onSubscribe={onSubscribe} />
         </div>
         <div className="col-span-1 md:col-span-6 lg:col-span-5 xl:col-span-3 h-full">
-          <StatsGrid remainingSuccess={remainingSuccess} quotaLimit={quotaLimit} historyCount={historyCount} isDemo={isDemo} />
+          <StatsGrid remainingSuccess={remainingSuccess} quotaLimit={quotaLimit} historyCount={historyCount} isDemo={isDemo} isUnlimited={isUnlimited} />
         </div>
         <div className="col-span-1 md:col-span-6 lg:col-span-7 xl:col-span-5 h-full">
           <UsageChart data={trend} days={days} onChangeDays={setDays} />

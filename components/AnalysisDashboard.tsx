@@ -102,7 +102,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
     onSubscribe = () => {} 
 }) => {
   const dashboardRef = useRef<HTMLDivElement>(null);
-  const isLocked = userTier !== 'pro';
+  const isLocked = userTier === 'guest';
   const [showSentimentTooltip, setShowSentimentTooltip] = useState(false);
   
   // 3 Tiers Logic: Buy (Red/Rocket), Sell (Green/Bear), Wait (Gray/Caution)

@@ -879,7 +879,8 @@ app.get('/api/usage/summary', requireAuth, async (req, res) => {
          user_id,
          SUM(quota_limit) AS quotaLimit,
          SUM(quota_limit) - SUM(used_count_success) AS remainingSuccess,
-         SUM(used_count_success) AS historyCount
+         SUM(used_count_success) AS historyCount,
+         MAX(quota_limit) AS maxQuotaLimit
        FROM user_quota_periods
        WHERE user_id = ?
        GROUP BY user_id`,
@@ -890,12 +891,15 @@ app.get('/api/usage/summary', requireAuth, async (req, res) => {
     const quotaLimit = r?.quotaLimit === null || r?.quotaLimit === undefined ? 0 : Number(r.quotaLimit);
     const remainingSuccess = r?.remainingSuccess === null || r?.remainingSuccess === undefined ? 0 : Number(r.remainingSuccess);
     const historyCount = r?.historyCount === null || r?.historyCount === undefined ? 0 : Number(r.historyCount);
+    const maxQuotaLimit = r?.maxQuotaLimit === null || r?.maxQuotaLimit === undefined ? 0 : Number(r.maxQuotaLimit);
+    const isUnlimited = Number.isFinite(maxQuotaLimit) && maxQuotaLimit >= 999999999;
 
     return res.json({
       userId: user.user_id,
       quotaLimit,
       remainingSuccess,
-      historyCount
+      historyCount,
+      isUnlimited
     });
   } catch (error) {
     console.error('❌ usage summary error:', error);

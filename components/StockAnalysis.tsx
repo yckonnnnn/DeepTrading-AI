@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, 
   UploadCloud, 
@@ -178,10 +178,10 @@ const LimitReachedView = ({ onSubscribe }: { onSubscribe: () => void }) => (
                 <Lock size={12} className="text-white" />
             </div>
          </div>
-         <h3 className="text-2xl font-extrabold text-gray-900 mb-3">今日免费额度已耗尽</h3>
+         <h3 className="text-2xl font-extrabold text-gray-900 mb-3">免费额度已耗尽</h3>
          <p className="text-gray-500 font-medium mb-8 leading-relaxed text-sm">
-            普通用户每日限 1 次 AI 深度分析。<br/>
-            升级 Pro 会员，解锁<span className="text-black font-bold">无限次</span>分析与 K 线识图。
+            普通用户免费分析次数已用完。<br/>
+            升级 Pro 会员，解锁<span className="text-black font-bold">不限次数</span>分析与 K 线识图。
          </p>
          <button 
            onClick={onSubscribe}
@@ -229,10 +229,9 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
-  // Usage Limit State
-  const [dailyUsage, setDailyUsage] = useState(0);
-  const MAX_FREE_USAGE = 1;
+  const API_BASE_URL = 'http://localhost:3001';
   const isPro = userTier === 'pro';
+  const [quota, setQuota] = useState<{ remainingSuccess: number; historyCount: number; isUnlimited: boolean } | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0);
   
@@ -257,7 +256,35 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
     return () => clearInterval(timer);
   }, [isAnalyzing, activeInputTab]);
 
-  const isLimitReached = !isPro && dailyUsage >= MAX_FREE_USAGE;
+  const fetchQuota = useCallback(async () => {
+    try {
+      if (userTier === 'guest') return;
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+      const resp = await fetch(`${API_BASE_URL}/api/usage/summary`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!resp.ok) return;
+      const data = await resp.json().catch(() => ({}));
+      const remainingSuccess = typeof data?.remainingSuccess === 'number' ? data.remainingSuccess : Number(data?.remainingSuccess || 0);
+      const historyCount = typeof data?.historyCount === 'number' ? data.historyCount : Number(data?.historyCount || 0);
+      const isUnlimited = Boolean(data?.isUnlimited);
+      setQuota({ remainingSuccess: Number.isFinite(remainingSuccess) ? remainingSuccess : 0, historyCount: Number.isFinite(historyCount) ? historyCount : 0, isUnlimited });
+    } catch {
+    }
+  }, [API_BASE_URL, userTier]);
+
+  const isLimitReached = useMemo(() => {
+    if (userTier === 'guest') return false;
+    if (isPro) return false;
+    if (!quota) return false;
+    if (quota.isUnlimited) return false;
+    return Number(quota.remainingSuccess || 0) <= 0;
+  }, [isPro, quota, userTier]);
+
+  useEffect(() => {
+    fetchQuota();
+  }, [fetchQuota]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -342,9 +369,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
       if (result) {
         setAnalysisResult(result);
         onAnalysisComplete(result); // Add to global history
-        if (!isPro) {
-            setDailyUsage(prev => prev + 1);
-        }
+        await fetchQuota();
       } else {
         setError(true);
       }
@@ -411,46 +436,56 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
       {showLoginRequired && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50 backdrop-blur-md"
             onClick={() => setShowLoginRequired(false)}
           ></div>
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="bg-gray-50 p-6 border-b border-gray-100 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-black rounded-2xl flex items-center justify-center">
-                  <Lock size={18} className="text-lime-300" />
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-24 -right-24 w-72 h-72 bg-lime-200/50 rounded-full blur-[60px]"></div>
+              <div className="absolute -bottom-28 -left-28 w-72 h-72 bg-indigo-200/40 rounded-full blur-[70px]"></div>
+            </div>
+
+            <div className="relative bg-gradient-to-b from-gray-50 to-white p-8 border-b border-gray-100 flex justify-between items-start">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center shadow-lg shadow-black/10 border border-gray-800">
+                  <Lock size={20} className="text-lime-300" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">登录后才能使用分析功能</h3>
-                  <p className="text-sm text-gray-500 font-medium">游客模式仅可浏览，分析功能已上锁</p>
+                <div className="pt-0.5">
+                  <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">登录后才能使用分析功能</h3>
+                  <p className="text-sm text-gray-500 font-semibold mt-1">游客模式仅可浏览，分析功能已上锁</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowLoginRequired(false)}
-                className="p-2 bg-white rounded-full text-gray-400 hover:text-black hover:bg-gray-200 transition-colors"
+                className="p-2.5 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors shadow-sm border border-gray-100"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="relative p-8">
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => {
                     setShowLoginRequired(false);
                     onRequireLogin();
                   }}
-                  className="w-full py-3 rounded-2xl font-bold text-base flex items-center justify-center gap-2 bg-black text-white hover:bg-gray-800 transition-colors"
+                  className="w-full py-4 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2 bg-black text-white hover:bg-gray-800 transition-all shadow-xl shadow-black/15"
                 >
                   去登录
                   <ChevronRight size={18} className="text-lime-300" />
                 </button>
                 <button
                   onClick={() => setShowLoginRequired(false)}
-                  className="w-full py-3 rounded-2xl font-bold text-base bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors"
+                  className="w-full py-4 rounded-2xl font-extrabold text-base bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 transition-colors"
                 >
                   先看看
                 </button>
+              </div>
+              <div className="mt-6 bg-gray-50/70 border border-gray-100 rounded-2xl p-4">
+                <div className="text-xs text-gray-500 font-semibold leading-relaxed">
+                  登录后可解锁：AI 深度分析、K 线识图、历史报告保存。
+                </div>
               </div>
             </div>
           </div>
@@ -497,9 +532,13 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                                         <Gift size={16} strokeWidth={2.5} />
                                     </div>
                                     <div className="flex flex-col items-start leading-none gap-0.5">
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">今日免费额度</span>
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">剩余分析次数</span>
                                         <span className="text-sm md:text-base font-black text-gray-900">
-                                            剩余 {Math.max(0, MAX_FREE_USAGE - dailyUsage)} 次
+                                            {userTier === 'guest'
+                                              ? '剩余 2 次'
+                                              : (quota
+                                                ? (quota.isUnlimited ? '不限次数' : `剩余 ${Math.max(0, Number(quota.remainingSuccess || 0))} 次`)
+                                                : '加载中...')}
                                         </span>
                                     </div>
                                 </div>

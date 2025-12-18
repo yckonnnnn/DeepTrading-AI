@@ -427,6 +427,8 @@ const App: React.FC = () => {
   const [userTier, setUserTier] = useState<UserTier>('free'); 
   const [isAdmin, setIsAdmin] = useState(false);
   const [authUser, setAuthUser] = useState<{ user_id?: string | null; username?: string | null; email?: string | null; channel?: number | null } | null>(null);
+  const [authSubscription, setAuthSubscription] = useState<any>(null);
+  const [authQuota, setAuthQuota] = useState<any>(null);
   const [history, setHistory] = useState<AIAnalysisReport[]>([]);
   const [authRefreshNonce, setAuthRefreshNonce] = useState(0);
   const [notifications, setNotifications] = useState<AppNotification[]>(MOCK_NOTIFICATIONS);
@@ -445,6 +447,8 @@ const App: React.FC = () => {
     if (!token) {
       setIsAdmin(false);
       setAuthUser(null);
+      setAuthSubscription(null);
+      setAuthQuota(null);
       return;
     }
 
@@ -459,6 +463,8 @@ const App: React.FC = () => {
           if (!cancelled) {
             setIsAdmin(false);
             setAuthUser(null);
+            setAuthSubscription(null);
+            setAuthQuota(null);
             setHistory([]);
             localStorage.removeItem('auth_channel');
           }
@@ -471,6 +477,8 @@ const App: React.FC = () => {
         if (!cancelled) {
           setIsAdmin(admin || backendTier === 'admin');
           setAuthUser(data?.user || null);
+          setAuthSubscription(data?.subscription || null);
+          setAuthQuota(data?.quota || null);
           if (typeof channel === 'number') {
             localStorage.setItem('auth_channel', String(channel));
           }
@@ -504,6 +512,8 @@ const App: React.FC = () => {
         if (!cancelled) {
           setIsAdmin(false);
           setAuthUser(null);
+          setAuthSubscription(null);
+          setAuthQuota(null);
           setHistory([]);
         }
       }
@@ -520,6 +530,8 @@ const App: React.FC = () => {
     setUserTier('free');
     setIsAdmin(false);
     setAuthUser(null);
+    setAuthSubscription(null);
+    setAuthQuota(null);
     setHistory([]);
     setCurrentView('app');
   };
@@ -528,6 +540,8 @@ const App: React.FC = () => {
     setUserTier('guest');
     setIsAdmin(false);
     setAuthUser(null);
+    setAuthSubscription(null);
+    setAuthQuota(null);
     setHistory([]);
     setCurrentView('app');
   };
@@ -542,6 +556,8 @@ const App: React.FC = () => {
     localStorage.removeItem('auth_channel');
     setIsAdmin(false);
     setAuthUser(null);
+    setAuthSubscription(null);
+    setAuthQuota(null);
     setHistory([]);
     setCurrentView('landing');
     setActiveTab('dashboard'); // Reset tab
@@ -628,6 +644,9 @@ const App: React.FC = () => {
         return (
           <Dashboard 
             userTier={userTier} 
+            isAdmin={isAdmin}
+            subscription={authSubscription}
+            quota={authQuota}
             onSubscribe={handleSubscribe} 
             onAnalyze={handleAnalyzeClick}
           />

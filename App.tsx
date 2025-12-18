@@ -458,6 +458,7 @@ const App: React.FC = () => {
           if (!cancelled) {
             setIsAdmin(false);
             setAuthUser(null);
+            setHistory([]);
             localStorage.removeItem('auth_channel');
           }
           return;
@@ -472,10 +473,28 @@ const App: React.FC = () => {
             localStorage.setItem('auth_channel', String(channel));
           }
         }
+
+        try {
+          const historyResp = await fetch(`${API_BASE_URL}/api/reports?page=1&pageSize=50`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const historyData = await historyResp.json().catch(() => ({}));
+          if (!cancelled && historyResp.ok) {
+            setHistory(Array.isArray(historyData?.items) ? historyData.items : []);
+          }
+          if (!cancelled && !historyResp.ok) {
+            setHistory([]);
+          }
+        } catch {
+          if (!cancelled) {
+            setHistory([]);
+          }
+        }
       } catch {
         if (!cancelled) {
           setIsAdmin(false);
           setAuthUser(null);
+          setHistory([]);
         }
       }
     })();
@@ -491,6 +510,7 @@ const App: React.FC = () => {
     setUserTier('free');
     setIsAdmin(false);
     setAuthUser(null);
+    setHistory([]);
     setCurrentView('app');
   };
 
@@ -498,6 +518,7 @@ const App: React.FC = () => {
     setUserTier('guest');
     setIsAdmin(false);
     setAuthUser(null);
+    setHistory([]);
     setCurrentView('app');
   };
   
@@ -511,12 +532,14 @@ const App: React.FC = () => {
     localStorage.removeItem('auth_channel');
     setIsAdmin(false);
     setAuthUser(null);
+    setHistory([]);
     setCurrentView('landing');
     setActiveTab('dashboard'); // Reset tab
   };
 
   const handleAnalysisComplete = (report: AIAnalysisReport) => {
-    const newReport = { ...report, id: Date.now().toString() };
+    const newReportId = (report as any)?.id ? String((report as any).id) : Date.now().toString();
+    const newReport = { ...report, id: newReportId };
     setHistory(prev => [newReport, ...prev]);
 
     // Add Notification

@@ -22,25 +22,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-const cacheDir = path.join(__dirname, '..', 'cache');
-if (!fs.existsSync(cacheDir)) {
-  fs.mkdirSync(cacheDir, { recursive: true });
-}
-
-const formatDateYmd = (date) => {
-  const y = String(date.getFullYear());
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-};
-
-const formatTimeHms = (date) => {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  const s = String(date.getSeconds()).padStart(2, '0');
-  return `${h}${m}${s}`;
-};
-
 const inferMarketFromSymbol = (symbol) => {
   if (!symbol || typeof symbol !== 'string') return null;
   const clean = symbol.replace(/[^0-9]/g, '').trim();
@@ -63,50 +44,6 @@ const tryGetAuthUser = async (req) => {
     return rows[0];
   } catch {
     return null;
-  }
-};
-
-const persistAnalysisReportToCache = async ({
-  reportId,
-  startedAt,
-  endedAt,
-  stockCode,
-  market,
-  user,
-  content,
-  reportType,
-  strategyMode
-}) => {
-  try {
-    const now = new Date();
-    const symbolForName = stockCode || 'kline';
-    const baseName = `${symbolForName}-${formatDateYmd(now)}`;
-    let fileName = `${baseName}.json`;
-    let filePath = path.join(cacheDir, fileName);
-    if (fs.existsSync(filePath)) {
-      const suffix = typeof reportId === 'string' && reportId.length > 0 ? reportId.slice(0, 8) : formatTimeHms(now);
-      fileName = `${baseName}-${suffix}.json`;
-      filePath = path.join(cacheDir, fileName);
-    }
-
-    const payload = {
-      reportId,
-      reportType,
-      strategyMode,
-      startedAt,
-      endedAt,
-      stockCode: stockCode || null,
-      market: market || null,
-      userId: user?.user_id ?? null,
-      username: user?.username ?? null,
-      content
-    };
-
-    await fs.promises.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
-    return { ok: true, fileName };
-  } catch (e) {
-    console.error('❌ persist report failed:', e);
-    return { ok: false };
   }
 };
 
@@ -302,7 +239,9 @@ app.post('/api/auth/send-code', async (req, res) => {
       }
     } catch {}
 
-    const codeUserId = userId || `pending-${crypto.randomBytes(4).toString('hex')}`;
+    const codeUserId = (typeof userId === 'string' && userId.trim().length > 0)
+      ? userId
+      : `pending-${crypto.randomBytes(4).toString('hex')}`;
 
     const [insertResult] = await pool.execute(
       'INSERT INTO email_verification_codes (user_id, email, purpose, code_hash, expires_at, request_ip) VALUES (?, ?, ?, ?, ?, ?)',
@@ -497,20 +436,37 @@ app.get('/api/reports', requireAuth, async (req, res) => {
     const pageSize = Math.min(50, Math.max(1, parseInt(req.query?.pageSize, 10) || 20));
     const offset = (page - 1) * pageSize;
 
+    const safeOffset = Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0;
+    const safePageSize = Number.isFinite(pageSize) && pageSize >= 1 ? Math.floor(pageSize) : 20;
+
     const [rows] = await pool.execute(
-      `SELECT report_id, report_type, strategy_mode, stock_code, market, stock_name, recommendation, confidence_score, started_at, ended_at, created_at
+      `SELECT report_id, report_json, created_at
        FROM analysis_reports
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [user.user_id, pageSize, offset]
+       LIMIT ${safeOffset}, ${safePageSize}`,
+      [user.user_id]
     );
 
-    return res.json({
-      page,
-      pageSize,
-      items: Array.isArray(rows) ? rows : []
+    const items = (Array.isArray(rows) ? rows : []).map((r) => {
+      let reportJson = r.report_json;
+      if (typeof reportJson === 'string') {
+        try {
+          reportJson = JSON.parse(reportJson);
+        } catch {
+          reportJson = null;
+        }
+      }
+      const createdAt = r.created_at ? new Date(r.created_at).toISOString() : null;
+      const base = reportJson && typeof reportJson === 'object' ? reportJson : {};
+      return {
+        ...base,
+        id: r.report_id,
+        timestamp: base.timestamp || createdAt
+      };
     });
+
+    return res.json({ page, pageSize, items });
   } catch (error) {
     console.error('❌ reports list error:', error);
     return res.status(500).json({ error: '获取失败', code: 'INTERNAL_ERROR' });
@@ -530,7 +486,7 @@ app.get('/api/reports/:reportId', requireAuth, async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      'SELECT report_id, report_type, strategy_mode, stock_code, market, stock_name, recommendation, confidence_score, report_json, started_at, ended_at, created_at FROM analysis_reports WHERE report_id = ? AND user_id = ? LIMIT 1',
+      'SELECT report_id, report_json, created_at FROM analysis_reports WHERE report_id = ? AND user_id = ? LIMIT 1',
       [reportId, user.user_id]
     );
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -545,10 +501,14 @@ app.get('/api/reports/:reportId', requireAuth, async (req, res) => {
         reportJson = null;
       }
     }
+
+    const createdAt = r.created_at ? new Date(r.created_at).toISOString() : null;
+    const base = reportJson && typeof reportJson === 'object' ? reportJson : {};
     return res.json({
       report: {
-        ...r,
-        report_json: reportJson
+        ...base,
+        id: r.report_id,
+        timestamp: base.timestamp || createdAt
       }
     });
   } catch (error) {
@@ -1428,17 +1388,6 @@ app.post('/api/analyze', async (req, res) => {
       const reportStockCode = parsedData.stockCode || extractStockCode(prompt) || null;
       const market = inferMarketFromSymbol(reportStockCode);
       const user = await tryGetAuthUser(req);
-      await persistAnalysisReportToCache({
-        reportId,
-        startedAt: requestStartedAt.toISOString(),
-        endedAt: requestEndedAt.toISOString(),
-        stockCode: reportStockCode,
-        market,
-        user,
-        content: parsedData,
-        reportType: imageBase64 ? 'kline' : 'text',
-        strategyMode
-      });
       await persistAnalysisReportToDb({
         reportId,
         startedAt: requestStartedAt.toISOString(),
@@ -1450,6 +1399,8 @@ app.post('/api/analyze', async (req, res) => {
         reportType: imageBase64 ? 'kline' : 'text',
         strategyMode
       });
+
+      parsedData.id = reportId;
 
       console.log(`   ✅ 分析完成: ${parsedData.stockName} - ${parsedData.recommendation}`);
       return res.json(parsedData);
@@ -1662,17 +1613,6 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
 
         const requestEndedAt = new Date();
         const user = await tryGetAuthUser(req);
-        await persistAnalysisReportToCache({
-          reportId,
-          startedAt: requestStartedAt.toISOString(),
-          endedAt: requestEndedAt.toISOString(),
-          stockCode: extractStockCode(parsedData.stockCode) || null,
-          market: inferMarketFromSymbol(parsedData.stockCode),
-          user,
-          content: parsedData,
-          reportType: 'kline',
-          strategyMode
-        });
         await persistAnalysisReportToDb({
           reportId,
           startedAt: requestStartedAt.toISOString(),
@@ -1684,6 +1624,8 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
           reportType: 'kline',
           strategyMode
         });
+
+        parsedData.id = reportId;
 
         console.log(`✅ K 线分析完成(未合并真实数据): ${parsedData.recommendation}`);
         return res.json(parsedData);
@@ -1725,17 +1667,6 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
 
       const requestEndedAt = new Date();
       const user = await tryGetAuthUser(req);
-      await persistAnalysisReportToCache({
-        reportId,
-        startedAt: requestStartedAt.toISOString(),
-        endedAt: requestEndedAt.toISOString(),
-        stockCode: parsedData.stockCode || stockCodeFromImage,
-        market: inferMarketFromSymbol(parsedData.stockCode || stockCodeFromImage),
-        user,
-        content: parsedData,
-        reportType: 'kline',
-        strategyMode
-      });
       await persistAnalysisReportToDb({
         reportId,
         startedAt: requestStartedAt.toISOString(),
@@ -1747,6 +1678,8 @@ app.post('/api/analyze-kline', upload.single('image'), async (req, res) => {
         reportType: 'kline',
         strategyMode
       });
+
+      parsedData.id = reportId;
 
       console.log(`✅ K 线分析完成: ${parsedData.recommendation}`);
       return res.json(parsedData);

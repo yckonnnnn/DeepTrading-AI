@@ -527,7 +527,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, 
       setTrend(guestUsageData);
       return;
     }
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (!token) return;
 
     let cancelled = false;
@@ -551,7 +551,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, 
 
   useEffect(() => {
     if (isDemo) return;
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (!token) return;
 
     let cancelled = false;

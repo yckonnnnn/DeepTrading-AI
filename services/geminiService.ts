@@ -11,7 +11,7 @@ export const generateStockAnalysis = async (
   strategyMode: string
 ): Promise<AIAnalysisReport | null> => {
   try {
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
@@ -54,7 +54,7 @@ export const analyzeKlineImage = async (
   prompt: string = ""
 ): Promise<AIAnalysisReport | null> => {
   try {
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     const formData = new FormData();
     formData.append("image", imageFile);
     formData.append("strategyMode", strategyMode);

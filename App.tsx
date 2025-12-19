@@ -470,13 +470,62 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
+
+    try {
+      const legacyToken = localStorage.getItem('auth_token');
+      const legacyChannel = localStorage.getItem('auth_channel');
+      const currentToken = sessionStorage.getItem('auth_token');
+      const currentChannel = sessionStorage.getItem('auth_channel');
+
+      if (!currentToken && legacyToken) {
+        sessionStorage.setItem('auth_token', legacyToken);
+      }
+      if (!currentChannel && legacyChannel) {
+        sessionStorage.setItem('auth_channel', legacyChannel);
+      }
+
+      if (legacyToken) localStorage.removeItem('auth_token');
+      if (legacyChannel) localStorage.removeItem('auth_channel');
+    } catch {
+      // ignore storage errors
+    }
   }, []);
 
   useEffect(() => {
     if (currentView !== 'app') return;
 
+    const triggerRefresh = () => {
+      setAuthRefreshNonce((v) => v + 1);
+    };
+
+    const onFocus = () => triggerRefresh();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        triggerRefresh();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        triggerRefresh();
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.clearInterval(intervalId);
+    };
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'app') return;
+
     const API_BASE_URL = 'http://localhost:3001';
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (!token) {
       setIsAdmin(false);
       setAuthUser(null);
@@ -501,7 +550,7 @@ const App: React.FC = () => {
             setAuthQuota(null);
             setHistory([]);
             setNotifications(MOCK_NOTIFICATIONS);
-            localStorage.removeItem('auth_channel');
+            sessionStorage.removeItem('auth_channel');
           }
           return;
         }
@@ -515,7 +564,7 @@ const App: React.FC = () => {
           setAuthSubscription(data?.subscription || null);
           setAuthQuota(data?.quota || null);
           if (typeof channel === 'number') {
-            localStorage.setItem('auth_channel', String(channel));
+            sessionStorage.setItem('auth_channel', String(channel));
           }
 
           if (backendTier === 'pro') {
@@ -614,8 +663,8 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_channel');
+    sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('auth_channel');
     setIsAdmin(false);
     setAuthUser(null);
     setAuthSubscription(null);
@@ -649,7 +698,7 @@ const App: React.FC = () => {
      setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
 
      if (userTier !== 'guest') {
-        const token = localStorage.getItem('auth_token');
+        const token = sessionStorage.getItem('auth_token');
         if (token) {
           const API_BASE_URL = 'http://localhost:3001';
           fetch(`${API_BASE_URL}/api/notifications/${notification.id}/read`, {
@@ -670,7 +719,7 @@ const App: React.FC = () => {
      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
 
      if (userTier !== 'guest') {
-        const token = localStorage.getItem('auth_token');
+        const token = sessionStorage.getItem('auth_token');
         if (token) {
           const API_BASE_URL = 'http://localhost:3001';
           fetch(`${API_BASE_URL}/api/notifications/read-all`, {

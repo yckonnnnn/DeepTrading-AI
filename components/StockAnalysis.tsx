@@ -259,7 +259,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
   const fetchQuota = useCallback(async () => {
     try {
       if (userTier === 'guest') return;
-      const token = localStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token');
       if (!token) return;
       const resp = await fetch(`${API_BASE_URL}/api/usage/summary`, {
         headers: { Authorization: `Bearer ${token}` }

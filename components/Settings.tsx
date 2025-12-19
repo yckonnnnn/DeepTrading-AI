@@ -62,7 +62,7 @@ const Settings = ({ authUser, onProfileUpdated }: SettingsProps) => {
       return;
     }
 
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (!token) {
       setToast({ type: 'error', message: '请先登录' });
       return;
@@ -106,7 +106,7 @@ const Settings = ({ authUser, onProfileUpdated }: SettingsProps) => {
       return;
     }
 
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (!token) {
       setToast({ type: 'error', message: '请先登录' });
       return;

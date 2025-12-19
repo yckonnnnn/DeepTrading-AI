@@ -66,8 +66,19 @@ const createAnalyzeRouter = ({
         }
 
         console.log('   🔍 正在查询数据库获取真实股票数据...');
-        stockDataWithIndicators = await getStockDataWithIndicators(prompt);
-        moneyFlowMonitor = await getMoneyFlowMonitor(prompt);
+        try {
+          stockDataWithIndicators = await getStockDataWithIndicators(prompt);
+        } catch (e) {
+          stockDataWithIndicators = null;
+          console.error('❌ getStockDataWithIndicators failed, fallback to model-only analysis:', e);
+        }
+
+        try {
+          moneyFlowMonitor = await getMoneyFlowMonitor(prompt);
+        } catch (e) {
+          moneyFlowMonitor = null;
+          console.error('❌ getMoneyFlowMonitor failed, fallback to model-only analysis:', e);
+        }
 
         if (moneyFlowMonitor) {
           console.log('   💸 资金与情绪监控(最新):');
@@ -85,9 +96,13 @@ const createAnalyzeRouter = ({
           console.log(`   📅 数据日期: ${stockDataWithIndicators.stockInfo.latestDate}`);
           console.log(`   💰 最新价格: ${stockDataWithIndicators.stockInfo.latestPrice}`);
 
-          // 构建包含真实数据的增强 Prompt
-          enhancedPrompt = buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategyMode, prompt);
-          userContent.push({ type: 'text', text: enhancedPrompt });
+          try {
+            enhancedPrompt = buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategyMode, prompt);
+            userContent.push({ type: 'text', text: enhancedPrompt });
+          } catch (e) {
+            console.error('❌ buildEnhancedPrompt failed, fallback to model-only analysis:', e);
+            userContent.push({ type: 'text', text: `使用「${strategyMode}」策略分析以下股票: ${prompt}` });
+          }
         } else {
           console.log('   ⚠️ 未找到股票日线数据，使用降级分析模式');
 
@@ -241,7 +256,23 @@ const createAnalyzeRouter = ({
           reserved: reservation?.reserved
         });
       } catch {}
-      res.status(500).json({ error: 'Analysis failed' });
+      const debugEnabled = process.env.DEBUG_API_ERRORS === '1';
+      if (debugEnabled) {
+        return res.status(500).json({
+          error: 'Analysis failed',
+          code: 'ANALYSIS_FAILED',
+          details: {
+            name: error?.name,
+            message: error?.message,
+            status: error?.status,
+            code: error?.code,
+            requestId: error?.request_id || error?.requestId || error?.data?.requestId || error?.data?.RequestId,
+            type: error?.type,
+            param: error?.param
+          }
+        });
+      }
+      return res.status(500).json({ error: 'Analysis failed', code: 'ANALYSIS_FAILED' });
     }
   });
 

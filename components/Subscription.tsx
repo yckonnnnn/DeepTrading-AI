@@ -286,7 +286,7 @@ const Subscription: React.FC<SubscriptionProps> = ({ isAdmin = false, onSubscrip
   };
 
   const mockPaymentComplete = async (planCode: string, provider: 'alipay' | 'wechat' | 'card') => {
-      const token = localStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token');
       if (!token) {
           showToast('请先登录后再订阅');
           return false;
@@ -321,7 +321,7 @@ const Subscription: React.FC<SubscriptionProps> = ({ isAdmin = false, onSubscrip
   };
 
   const handleAdminGrant = async (payload: { identifier: string; planCode: 'weekly' | 'monthly' | 'yearly'; provider: 'alipay' | 'wechat' | 'card' }) => {
-      const token = localStorage.getItem('auth_token');
+      const token = sessionStorage.getItem('auth_token');
       if (!token) {
           showToast('请先登录管理员账号');
           return false;

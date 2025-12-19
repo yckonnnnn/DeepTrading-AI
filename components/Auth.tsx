@@ -240,10 +240,10 @@ const Auth: React.FC<AuthProps> = ({ initialView, onLoginSuccess, onGuestLogin, 
         }
 
         if (data?.token) {
-          localStorage.setItem('auth_token', data.token);
+          sessionStorage.setItem('auth_token', data.token);
         }
         if (typeof data?.user?.channel === 'number') {
-          localStorage.setItem('auth_channel', String(data.user.channel));
+          sessionStorage.setItem('auth_channel', String(data.user.channel));
         }
         onLoginSuccess();
         return;

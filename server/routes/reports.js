@@ -28,10 +28,11 @@ router.get('/', requireAuth, async (req, res) => {
     const safePageSize = Number.isFinite(pageSize) && pageSize >= 1 ? Math.floor(pageSize) : 20;
 
     const [rows] = await pool.execute(
-      `SELECT report_id, report_json, created_at
-       FROM analysis_reports
-       WHERE user_id = ?
-       ORDER BY created_at DESC
+      `SELECT ar.report_id, ar.report_json, ar.created_at, ar.stock_code, sl.industry
+       FROM analysis_reports ar
+       LEFT JOIN tushare_stock_list sl ON ar.stock_code = sl.symbol
+       WHERE ar.user_id = ?
+       ORDER BY ar.created_at DESC
        LIMIT ${safeOffset}, ${safePageSize}`,
       [user.user_id]
     );
@@ -50,7 +51,8 @@ router.get('/', requireAuth, async (req, res) => {
       return {
         ...base,
         id: r.report_id,
-        timestamp: base.timestamp || createdAt
+        timestamp: base.timestamp || createdAt,
+        industry: r.industry || base?.realData?.stockInfo?.industry || null
       };
     });
 

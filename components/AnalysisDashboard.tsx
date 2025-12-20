@@ -403,8 +403,14 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
         if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
         const n = Number(v);
         const abs = Math.abs(n);
-        const txt = abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+        const txt = abs.toFixed(2);
         return `${n >= 0 ? '+' : '-'}${txt}亿`;
+      };
+      const formatAbsYi = (v: number | null | undefined) => {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
+        const n = Math.abs(Number(v));
+        const txt = n.toFixed(2);
+        return `${txt}亿`;
       };
       const inflowClass = (v: number | null | undefined) => {
         if (v === null || v === undefined || Number.isNaN(Number(v))) return 'inflow-neutral';
@@ -425,16 +431,23 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
           : neg >= 2
             ? '主力资金偏流出，短线承压，等待企稳信号。'
             : '资金分歧加大，短线震荡为主，控制仓位。';
-      const scoreRaw = m?.retailSentimentRatio;
+      const scoreRaw = m?.fundSentimentIndex ?? m?.retailSentimentRatio;
       const score = scoreRaw === null || scoreRaw === undefined || Number.isNaN(Number(scoreRaw))
         ? 50
         : Math.max(0, Math.min(100, Number(scoreRaw)));
-      const sentimentText = score > 80 ? '贪婪' : score < 20 ? '恐慌' : '中性';
-      const sentimentPillClass = score > 80 ? 'pill-rose' : score < 20 ? 'pill-emerald' : 'pill-purple';
+      const sentimentText = m?.fundSentimentLevel || (score >= 75 ? '极度乐观' : score >= 50 ? '乐观' : score >= 25 ? '中性' : '恐慌');
+      const sentimentPillClass = sentimentText === '极度乐观'
+        ? 'pill-rose'
+        : sentimentText === '乐观'
+          ? 'pill-amber'
+          : sentimentText === '恐慌'
+            ? 'pill-emerald'
+            : 'pill-purple';
 
       return {
         m,
         formatYi,
+        formatAbsYi,
         inflowClass,
         summary,
         score,
@@ -651,6 +664,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
               .pill-rose { background: #fff1f2; color: #e11d48; border: 1px solid #ffe4e6; }
               .pill-emerald { background: #ecfdf5; color: #059669; border: 1px solid #d1fae5; }
               .pill-purple { background: #faf5ff; color: #7c3aed; border: 1px solid #ede9fe; }
+              .pill-amber { background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
               .sentiment-row { margin-top: 20px; padding: 20px; border-radius: 20px; border: 1px solid #f1f5f9; background: #ffffff; }
               .sentiment-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
               .sentiment-title { font-size: 0.75rem; font-weight: 900; color: #9ca3af; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -829,16 +843,27 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                       <div style="font-size: 0.75rem; font-weight: 900; color: #9ca3af; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px;">主力资金净流入趋势</div>
                       <div class="money-grid">
                           <div class="money-item">
-                              <div class="money-label">3日</div>
+                              <div class="money-label">3日净流入</div>
                               <div class="money-val ${htmlMoneyFlow.inflowClass(htmlMoneyFlow.m?.netInflow3d)}">${htmlMoneyFlow.formatYi(htmlMoneyFlow.m?.netInflow3d)}</div>
                           </div>
                           <div class="money-item">
-                              <div class="money-label">5日</div>
+                              <div class="money-label">5日净流入</div>
                               <div class="money-val ${htmlMoneyFlow.inflowClass(htmlMoneyFlow.m?.netInflow5d)}">${htmlMoneyFlow.formatYi(htmlMoneyFlow.m?.netInflow5d)}</div>
                           </div>
                           <div class="money-item">
-                              <div class="money-label">20日</div>
+                              <div class="money-label">20日净流入</div>
                               <div class="money-val ${htmlMoneyFlow.inflowClass(htmlMoneyFlow.m?.netInflow20d)}">${htmlMoneyFlow.formatYi(htmlMoneyFlow.m?.netInflow20d)}</div>
+                          </div>
+                      </div>
+
+                      <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                          <div style="background: #ffffff; border: 1px solid #eef2ff; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;">
+                              <div style="font-size: 0.75rem; font-weight: 900; color: #9ca3af; letter-spacing: 0.08em; text-transform: uppercase;">当日主力买入</div>
+                              <div style="font-size: 1rem; font-weight: 900; color: #111827;">${htmlMoneyFlow.formatAbsYi(htmlMoneyFlow.m?.mainBuyAmount)}</div>
+                          </div>
+                          <div style="background: #ffffff; border: 1px solid #fef3c7; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;">
+                              <div style="font-size: 0.75rem; font-weight: 900; color: #9ca3af; letter-spacing: 0.08em; text-transform: uppercase;">当日主力卖出</div>
+                              <div style="font-size: 1rem; font-weight: 900; color: #111827;">${htmlMoneyFlow.formatAbsYi(htmlMoneyFlow.m?.mainSellAmount)}</div>
                           </div>
                       </div>
 
@@ -850,16 +875,17 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
                   <div class="sentiment-row">
                       <div class="sentiment-head">
-                          <div class="sentiment-title">散户情绪指数</div>
+                          <div class="sentiment-title">资金情绪指数</div>
                           <div class="pill ${htmlMoneyFlow.sentimentPillClass}">${htmlMoneyFlow.sentimentText}</div>
                       </div>
                       <div class="sentiment-bar">
                           <div class="sentiment-fill" style="width: ${htmlMoneyFlow.score}%;"></div>
                       </div>
                       <div class="sentiment-meta">
-                          <span>恐慌</span>
-                          <span>${Math.round(htmlMoneyFlow.score)}%</span>
-                          <span>贪婪</span>
+                          <span>恐慌(0)</span>
+                          <span>中性(33)</span>
+                          <span>乐观(66)</span>
+                          <span>极度乐观(100)</span>
                       </div>
                   </div>
               </div>
@@ -1284,7 +1310,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                   {isLocked && (
                     <LockedOverlay
                       onSubscribe={onSubscribe}
-                      description="解锁主力资金净流入、3/5/20 日资金趋势与散户情绪监控。"
+                      description="解锁主力资金净流入、3/5/20 日资金趋势与资金情绪指数监控。"
                     />
                   )}
 
@@ -1294,8 +1320,14 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                       if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
                       const n = Number(v);
                       const abs = Math.abs(n);
-                      const txt = abs >= 10 ? abs.toFixed(1) : abs.toFixed(2);
+                      const txt = abs.toFixed(2);
                       return `${n >= 0 ? '+' : '-'}${txt}亿`;
+                    };
+                    const formatAbsYi = (v: number | null | undefined) => {
+                      if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
+                      const n = Math.abs(Number(v));
+                      const txt = n.toFixed(2);
+                      return `${txt}亿`;
                     };
                     const getInflowClass = (v: number | null | undefined) => {
                       if (v === null || v === undefined || Number.isNaN(Number(v))) return 'text-gray-900';
@@ -1304,11 +1336,11 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                       if (n < 0) return 'text-emerald-600';
                       return 'text-gray-900';
                     };
-                    const scoreRaw = m?.retailSentimentRatio;
+                    const scoreRaw = m?.fundSentimentIndex ?? m?.retailSentimentRatio;
                     const score = scoreRaw === null || scoreRaw === undefined || Number.isNaN(Number(scoreRaw))
                       ? 50
                       : Math.max(0, Math.min(100, Number(scoreRaw)));
-                    const sentimentText = score > 80 ? '贪婪' : score < 20 ? '恐慌' : '中性';
+                    const sentimentText = m?.fundSentimentLevel || (score >= 75 ? '极度乐观' : score >= 50 ? '乐观' : score >= 25 ? '中性' : '恐慌');
                     const inflows = [m?.netInflow3d, m?.netInflow5d, m?.netInflow20d]
                       .map(v => (v === null || v === undefined ? null : Number(v)))
                       .filter(v => v !== null && !Number.isNaN(v as number)) as number[];
@@ -1335,16 +1367,26 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">主力资金净流入趋势</div>
                              <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gray-200">
                                  <div>
-                                     <div className="text-xs text-gray-500 font-bold mb-1">3日</div>
+                                     <div className="text-xs text-gray-500 font-bold mb-1">3日净流入</div>
                                      <div className={`text-sm font-black ${getInflowClass(m?.netInflow3d)}`}>{formatYi(m?.netInflow3d)}</div>
                                  </div>
                                  <div>
-                                     <div className="text-xs text-gray-500 font-bold mb-1">5日</div>
+                                     <div className="text-xs text-gray-500 font-bold mb-1">5日净流入</div>
                                      <div className={`text-sm font-black ${getInflowClass(m?.netInflow5d)}`}>{formatYi(m?.netInflow5d)}</div>
                                  </div>
                                  <div>
-                                     <div className="text-xs text-gray-500 font-bold mb-1">20日</div>
+                                     <div className="text-xs text-gray-500 font-bold mb-1">20日净流入</div>
                                      <div className={`text-sm font-black ${getInflowClass(m?.netInflow20d)}`}>{formatYi(m?.netInflow20d)}</div>
+                                 </div>
+                             </div>
+                             <div className="grid grid-cols-2 gap-2 mt-3">
+                                 <div className="bg-white border border-gray-100 rounded-xl p-3 flex items-center justify-between">
+                                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">当日主力买入</div>
+                                     <div className="text-sm font-black text-gray-900">{formatAbsYi(m?.mainBuyAmount)}</div>
+                                 </div>
+                                 <div className="bg-white border border-gray-100 rounded-xl p-3 flex items-center justify-between">
+                                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">当日主力卖出</div>
+                                     <div className="text-sm font-black text-gray-900">{formatAbsYi(m?.mainSellAmount)}</div>
                                  </div>
                              </div>
                              <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600 font-medium leading-relaxed flex items-start gap-2">
@@ -1355,15 +1397,15 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
                           <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm relative group">
                              <div className="flex justify-between items-center mb-6">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">散户情绪指数</span>
-                                <span className={`text-sm font-bold px-2 py-0.5 rounded-lg ${score > 80 ? 'bg-rose-50 text-rose-600' : score < 20 ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">资金情绪指数</span>
+                                <span className={`text-sm font-bold px-2 py-0.5 rounded-lg ${sentimentText === '极度乐观' ? 'bg-rose-50 text-rose-600' : sentimentText === '乐观' ? 'bg-amber-50 text-amber-600' : sentimentText === '恐慌' ? 'bg-emerald-50 text-emerald-600' : 'bg-purple-50 text-purple-600'}`}>
                                     {sentimentText}
                                 </span>
                              </div>
 
                              <div 
                                className="h-3 w-full rounded-full relative mb-2 cursor-pointer"
-                               style={{ background: 'linear-gradient(to right, #34d399, #e5e7eb, #f43f5e)' }}
+                               style={{ background: 'linear-gradient(to right, #34d399 0%, #a78bfa 33%, #fbbf24 66%, #fb7185 100%)' }}
                                onMouseEnter={() => setShowSentimentTooltip(true)}
                                onMouseLeave={() => setShowSentimentTooltip(false)}
                              >
@@ -1387,8 +1429,9 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({
 
                              <div className="flex justify-between text-[10px] text-gray-400 font-bold px-1">
                                 <span className="text-emerald-500">恐慌 (0)</span>
-                                <span className="text-gray-400">中性 (50)</span>
-                                <span className="text-rose-500">贪婪 (100)</span>
+                                <span className="text-gray-400">中性 (33)</span>
+                                <span className="text-amber-500">乐观 (66)</span>
+                                <span className="text-rose-500">极度乐观 (100)</span>
                              </div>
                           </div>
                       </div>

@@ -104,13 +104,13 @@ const AdminGrantModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose}></div>
-      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40">
-        <div className="bg-gradient-to-b from-gray-50 to-white p-8 border-b border-gray-100 flex justify-between items-start">
+      <div className="bg-white rounded-[1.75rem] sm:rounded-[2.5rem] shadow-2xl w-full max-w-xl relative z-10 animate-in fade-in zoom-in-95 duration-200 overflow-hidden border border-white/40 max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-b from-gray-50 to-white p-5 sm:p-8 border-b border-gray-100 flex justify-between items-start">
           <div>
-            <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">临时开通会员</h3>
-            <p className="text-sm text-gray-500 font-semibold mt-1">仅管理员可用 · 直接写入订阅数据</p>
+            <h3 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">临时开通会员</h3>
+            <p className="text-xs sm:text-sm text-gray-500 font-semibold mt-1">仅管理员可用 · 直接写入订阅数据</p>
             <div className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-black text-white text-xs font-extrabold">
               本次开通：{planLabel}
             </div>
@@ -120,7 +120,7 @@ const AdminGrantModal = ({
           </button>
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-5 sm:space-y-6">
           <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
             <div className="text-xs font-bold text-gray-500 mb-2">用户名或邮箱</div>
             <input
@@ -176,11 +176,13 @@ const AdminGrantModal = ({
               </div>
             </button>
           </div>
+        </div>
 
+        <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 p-4 sm:p-6">
           <button
             onClick={handleConfirm}
             disabled={isProcessing || !identifier.trim()}
-            className={`w-full py-4 rounded-2xl font-extrabold text-base transition-all shadow-xl ${
+            className={`w-full py-3 sm:py-4 rounded-2xl font-extrabold text-sm sm:text-base transition-all shadow-xl ${
               isProcessing || !identifier.trim() ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' : 'bg-black text-white hover:bg-gray-800 shadow-black/15'
             }`}
           >

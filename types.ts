@@ -48,7 +48,11 @@ export interface MoneyFlowMonitor {
   netInflow3d: number | null; // 单位：亿元（前端展示用）
   netInflow5d: number | null; // 单位：亿元（前端展示用）
   netInflow20d: number | null; // 单位：亿元（前端展示用）
-  retailSentimentRatio: number | null; // 单位：%，0-100
+  mainBuyAmount?: number | null; // 单位：亿元（前端展示用）
+  mainSellAmount?: number | null; // 单位：亿元（前端展示用）
+  fundSentimentIndex?: number | null; // 单位：0-100
+  fundSentimentLevel?: '恐慌' | '中性' | '乐观' | '极度乐观' | null;
+  retailSentimentRatio?: number | null; // 兼容旧数据（单位：%，0-100）
 }
 
 export type NewsSentiment = 'positive' | 'negative' | 'neutral';

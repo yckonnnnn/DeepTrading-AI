@@ -86,7 +86,9 @@ const createAnalyzeRouter = ({
           console.log(`      💰 3D净流入(亿元): ${moneyFlowMonitor.netInflow3d}`);
           console.log(`      💰 5D净流入(亿元): ${moneyFlowMonitor.netInflow5d}`);
           console.log(`      💰 20D净流入(亿元): ${moneyFlowMonitor.netInflow20d}`);
-          console.log(`      🙂 retail_sentiment_ratio(%): ${moneyFlowMonitor.retailSentimentRatio}`);
+          console.log(`      🧾 主力买入(亿元): ${moneyFlowMonitor.mainBuyAmount}`);
+          console.log(`      🧾 主力卖出(亿元): ${moneyFlowMonitor.mainSellAmount}`);
+          console.log(`      🙂 fund_sentiment_index(0-100): ${moneyFlowMonitor.fundSentimentIndex} (${moneyFlowMonitor.fundSentimentLevel})`);
         } else {
           console.log('   💸 未查询到资金与情绪监控数据(a_stock_money_flow)');
         }
@@ -109,7 +111,7 @@ const createAnalyzeRouter = ({
           if (moneyFlowMonitor) {
             userContent.push({
               type: 'text',
-              text: `使用「${strategyMode}」策略分析以下股票: ${prompt}\n\n可用数据补充（来自数据库真实数据：a_stock_money_flow）：\n- 数据日期: ${moneyFlowMonitor.tradeDate}\n- 3日净流入(亿元): ${moneyFlowMonitor.netInflow3d ?? 'N/A'}\n- 5日净流入(亿元): ${moneyFlowMonitor.netInflow5d ?? 'N/A'}\n- 20日净流入(亿元): ${moneyFlowMonitor.netInflow20d ?? 'N/A'}\n- 散户情绪(%): ${moneyFlowMonitor.retailSentimentRatio ?? 'N/A'}\n\n请基于以上真实资金数据与市场常识给出分析，并严格按 JSON 输出。`
+              text: `使用「${strategyMode}」策略分析以下股票: ${prompt}\n\n可用数据补充（来自数据库真实数据：a_stock_money_flow）：\n- 数据日期: ${moneyFlowMonitor.tradeDate}\n- 3日净流入(亿元): ${moneyFlowMonitor.netInflow3d ?? 'N/A'}\n- 5日净流入(亿元): ${moneyFlowMonitor.netInflow5d ?? 'N/A'}\n- 20日净流入(亿元): ${moneyFlowMonitor.netInflow20d ?? 'N/A'}\n- 当日主力买入金额(亿元): ${moneyFlowMonitor.mainBuyAmount ?? 'N/A'}\n- 当日主力卖出金额(亿元): ${moneyFlowMonitor.mainSellAmount ?? 'N/A'}\n\n请基于以上真实资金数据与市场常识给出分析，并严格按 JSON 输出。`
             });
           } else {
             userContent.push({ type: 'text', text: `使用「${strategyMode}」策略分析以下股票: ${prompt}` });
@@ -471,7 +473,9 @@ const createAnalyzeRouter = ({
           console.log(`      💰 3D净流入(亿元): ${moneyFlowMonitor.netInflow3d}`);
           console.log(`      💰 5D净流入(亿元): ${moneyFlowMonitor.netInflow5d}`);
           console.log(`      💰 20D净流入(亿元): ${moneyFlowMonitor.netInflow20d}`);
-          console.log(`      🙂 retail_sentiment_ratio(%): ${moneyFlowMonitor.retailSentimentRatio}`);
+          console.log(`      🧾 主力买入(亿元): ${moneyFlowMonitor.mainBuyAmount}`);
+          console.log(`      🧾 主力卖出(亿元): ${moneyFlowMonitor.mainSellAmount}`);
+          console.log(`      🙂 fund_sentiment_index(0-100): ${moneyFlowMonitor.fundSentimentIndex} (${moneyFlowMonitor.fundSentimentLevel})`);
         } else {
           console.log('   💸 未查询到资金与情绪监控数据(a_stock_money_flow)');
         }

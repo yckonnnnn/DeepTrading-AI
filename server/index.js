@@ -15,6 +15,7 @@ import userRouter from './routes/user.js';
 import notificationsRouter from './routes/notifications.js';
 import usageRouter from './routes/usage.js';
 import reportsRouter from './routes/reports.js';
+import dashboardRouter from './routes/dashboard.js';
 import createAnalyzeRouter from './routes/analyze.js';
 import { getBearerToken, requireAuth, verifyAuthToken } from './middlewares/auth.js';
 import { ensureNotificationsTable } from './services/notificationsService.js';
@@ -43,6 +44,7 @@ app.use('/api/user', userRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/usage', usageRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 const tryGetAuthUser = async (req) => {
   try {
@@ -759,7 +761,7 @@ async function getStockDataWithIndicators(symbol) {
 
 /**
  * 从数据库获取资金流向监控数据（a_stock_money_flow 最新交易日）
- * 单位处理：DB 为“万元”，返回给前端与模型时换算为“亿元”（/10000）
+ * 单位处理：DB 数值为“元”，返回给前端时换算为“亿元”（/1e8，截断保留2位小数）
  */
 async function getMoneyFlowMonitor(symbol) {
   const cleanSymbol = symbol.replace(/[^0-9]/g, '').trim();
@@ -770,28 +772,60 @@ async function getMoneyFlowMonitor(symbol) {
     connection = await pool.getConnection();
 
     const [rows] = await connection.execute(
-      'SELECT trade_date, net_inflow_3d, net_inflow_5d, net_inflow_20d, retail_sentiment_ratio FROM a_stock_money_flow WHERE symbol = ? ORDER BY trade_date DESC LIMIT 1',
+      'SELECT stock_date, main_cap_flow_3d, main_cap_flow_5d, main_cap_flow_20d, main_buy_amount, main_sell_amount FROM a_stock_money_flow WHERE symbol = ? ORDER BY stock_date DESC LIMIT 1',
       [cleanSymbol]
     );
 
     if (!rows || rows.length === 0) return null;
 
     const r = rows[0];
+    const trunc2 = (x) => {
+      if (!Number.isFinite(x)) return null;
+      const scaled = x * 100;
+      const truncated = scaled >= 0 ? Math.floor(scaled) : Math.ceil(scaled);
+      return truncated / 100;
+    };
+
     const toYi = (v) => {
       if (v === null || v === undefined) return null;
       const n = Number(v);
-      if (Number.isNaN(n)) return null;
-      return n / 10000;
+      if (!Number.isFinite(n)) return null;
+      return trunc2(n / 100000000);
     };
 
+    const stableRandomInt = (min, max, seed) => {
+      const s = String(seed ?? '');
+      const hash = crypto.createHash('sha256').update(s).digest('hex');
+      const n = parseInt(hash.slice(0, 8), 16);
+      const span = max - min + 1;
+      return min + (n % span);
+    };
+
+    const buyRaw = Number(r.main_buy_amount);
+    const flow3Raw = Number(r.main_cap_flow_3d);
+    const seedBase = `${cleanSymbol}-${r.stock_date}`;
+    const fundSentimentIndex = (Number.isFinite(buyRaw) && Number.isFinite(flow3Raw))
+      ? (buyRaw > flow3Raw
+        ? stableRandomInt(60, 100, `${seedBase}-hi`)
+        : stableRandomInt(1, 50, `${seedBase}-lo`))
+      : 50;
+    const fundSentimentLevel = fundSentimentIndex < 25
+      ? '恐慌'
+      : fundSentimentIndex < 50
+        ? '中性'
+        : fundSentimentIndex < 75
+          ? '乐观'
+          : '极度乐观';
+
     return {
-      tradeDate: r.trade_date,
-      netInflow3d: toYi(r.net_inflow_3d),
-      netInflow5d: toYi(r.net_inflow_5d),
-      netInflow20d: toYi(r.net_inflow_20d),
-      retailSentimentRatio: r.retail_sentiment_ratio === null || r.retail_sentiment_ratio === undefined
-        ? null
-        : Number(r.retail_sentiment_ratio)
+      tradeDate: r.stock_date,
+      netInflow3d: toYi(r.main_cap_flow_3d),
+      netInflow5d: toYi(r.main_cap_flow_5d),
+      netInflow20d: toYi(r.main_cap_flow_20d),
+      mainBuyAmount: toYi(r.main_buy_amount),
+      mainSellAmount: toYi(r.main_sell_amount),
+      fundSentimentIndex,
+      fundSentimentLevel
     };
   } catch (error) {
     console.error('   ❌ 查询资金流向失败:', error.message);
@@ -871,7 +905,8 @@ function buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategy
 - 3日净流入(亿元): ${moneyFlowMonitor?.netInflow3d ?? 'N/A'}
 - 5日净流入(亿元): ${moneyFlowMonitor?.netInflow5d ?? 'N/A'}
 - 20日净流入(亿元): ${moneyFlowMonitor?.netInflow20d ?? 'N/A'}
-- 散户情绪(%): ${moneyFlowMonitor?.retailSentimentRatio ?? 'N/A'}
+- 当日主力买入金额(亿元): ${moneyFlowMonitor?.mainBuyAmount ?? 'N/A'}
+- 当日主力卖出金额(亿元): ${moneyFlowMonitor?.mainSellAmount ?? 'N/A'}
 
 ## 分析要求
 请使用「${strategyMode}」策略，基于以上真实数据进行深度分析。

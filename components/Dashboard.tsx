@@ -1,21 +1,14 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Settings, 
   Crown, 
   Zap, 
   History, 
-  Activity, 
-  Server, 
-  Radio, 
   BrainCircuit, 
   ArrowUpRight, 
   Megaphone, 
-  LifeBuoy, 
-  Key,
   TrendingUp,
-  User,
-  Coffee
+  User
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -23,12 +16,10 @@ import {
   XAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell 
+  ResponsiveContainer
 } from 'recharts';
 import { UserTier } from '../types';
+import HotStocks from './HotStocks';
 
 // --- Mock Data ---
 
@@ -47,12 +38,6 @@ const systemUpdates = [
   { id: 2, title: '美股实时数据源维护通知', date: '2025-10-22', type: 'maintenance' },
   { id: 3, title: '趋势跟踪策略算法优化完成', date: '2025-10-20', type: 'update' },
   { id: 4, title: '用户中心界面升级', date: '2025-10-18', type: 'new' },
-];
-
-const sentimentData = [
-  { name: '贪婪', value: 65, color: '#bef264' }, // lime-400
-  { name: '中性', value: 25, color: '#f3f4f6' }, // gray-100
-  { name: '恐慌', value: 10, color: '#fca5a5' }, // red-300
 ];
 
 type UsageSummary = {
@@ -314,95 +299,9 @@ const UsageChart = ({
   </div>
 );
 
-const AiServiceMonitor = () => (
-  <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm h-full flex flex-col min-h-[380px]">
-    <div className="flex justify-between items-start mb-8">
-       <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-black/5 rounded-2xl flex items-center justify-center border border-black/5">
-            <Activity size={24} className="text-black" />
-          </div>
-          <div>
-            <h3 className="font-bold text-lg text-gray-900">AI 市场风向标</h3>
-            <p className="text-sm text-gray-400 font-medium mt-1">基于全网大数据情感分析</p>
-          </div>
-       </div>
-       <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold flex items-center gap-1.5 border border-emerald-100">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          实时更新
-       </div>
-    </div>
-
-    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-       {/* Sentiment Gauge */}
-       <div className="h-48 w-full relative flex items-center justify-center bg-gray-50 rounded-[2rem]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sentimentData}
-                cx="50%"
-                cy="60%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-                startAngle={180}
-                endAngle={0}
-                stroke="none"
-              >
-                {sentimentData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1 text-center">
-             <div className="text-4xl font-extrabold text-gray-900 tracking-tighter">65</div>
-             <div className="text-xs font-bold text-lime-700 bg-lime-100 px-3 py-1 rounded-full mt-2 inline-block">贪婪</div>
-          </div>
-       </div>
-
-       {/* System Status */}
-       <div className="space-y-4">
-          <div className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between group hover:bg-gray-100 transition-colors cursor-default border border-transparent hover:border-gray-200">
-             <div className="flex items-center gap-3">
-                <div className="p-2 bg-white rounded-lg shadow-sm text-gray-400 group-hover:text-emerald-500 transition-colors">
-                    <Server size={18} />
-                </div>
-                <span className="text-sm font-bold text-gray-600">API 延迟</span>
-             </div>
-             <span className="text-emerald-500 font-bold text-sm bg-emerald-50 px-2 py-1 rounded-md">24ms</span>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between group hover:bg-gray-100 transition-colors cursor-default border border-transparent hover:border-gray-200">
-             <div className="flex items-center gap-3">
-                <div className="p-2 bg-white rounded-lg shadow-sm text-gray-400 group-hover:text-blue-500 transition-colors">
-                    <Radio size={18} />
-                </div>
-                <span className="text-sm font-bold text-gray-600">分析引擎</span>
-             </div>
-             <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1">
-                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> Online
-             </span>
-          </div>
-          <div className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between group hover:bg-gray-100 transition-colors cursor-default border border-transparent hover:border-gray-200">
-             <div className="flex items-center gap-3">
-                <div className="p-2 bg-white rounded-lg shadow-sm text-gray-400 group-hover:text-purple-500 transition-colors">
-                    <BrainCircuit size={18} />
-                </div>
-                <span className="text-sm font-bold text-gray-600">模型版本</span>
-             </div>
-             <span className="text-xs bg-black text-white px-3 py-1 rounded-lg font-bold">v4.5 Pro</span>
-          </div>
-       </div>
-    </div>
-  </div>
-);
-
 const SystemUpdates = () => (
-  <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm h-full flex flex-col min-h-[380px]">
-    <div className="flex justify-between items-center mb-8">
+  <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm flex flex-col">
+    <div className="flex justify-between items-center mb-6">
       <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
          <Megaphone size={20} className="text-orange-500" />
          系统公告
@@ -412,7 +311,7 @@ const SystemUpdates = () => (
       </button>
     </div>
     
-    <div className="flex-1 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+    <div className="flex-1 overflow-y-auto pr-2 space-y-2 custom-scrollbar max-h-[200px]">
       {systemUpdates.map((item) => (
         <div key={item.id} className="flex gap-4 items-start p-3 rounded-2xl hover:bg-gray-50 transition-colors cursor-pointer group">
            <div className={`mt-1 min-w-[36px] h-9 rounded-xl flex items-center justify-center border ${
@@ -437,7 +336,7 @@ interface QuickActionsProps {
 }
 
 const QuickActions: React.FC<QuickActionsProps> = ({ onAnalyze }) => (
-  <div className="flex flex-col gap-6 h-full min-h-[380px]">
+  <div className="flex">
      {/* Analyze Banner */}
      <div 
         onClick={onAnalyze}
@@ -459,18 +358,6 @@ const QuickActions: React.FC<QuickActionsProps> = ({ onAnalyze }) => (
                 立即分析 <ArrowUpRight size={14} />
             </button>
         </div>
-     </div>
-
-     {/* Quick Buttons - Split */}
-     <div className="grid grid-cols-2 gap-4 h-24">
-         <button className="bg-white border border-gray-100 hover:border-gray-200 hover:shadow-md rounded-[1.5rem] flex flex-col items-center justify-center gap-2 transition-all group">
-            <LifeBuoy size={24} className="text-gray-400 group-hover:text-black transition-colors" />
-            <span className="text-xs font-bold text-gray-600">帮助中心</span>
-         </button>
-         <button className="bg-white border border-gray-100 hover:border-gray-200 hover:shadow-md rounded-[1.5rem] flex flex-col items-center justify-center gap-2 transition-all group">
-            <Key size={24} className="text-gray-400 group-hover:text-black transition-colors" />
-            <span className="text-xs font-bold text-gray-600">API 管理</span>
-         </button>
      </div>
   </div>
 );
@@ -591,22 +478,18 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, 
         </div>
       </div>
 
-      {/* Bottom Section: Adjusted Proportions & Height */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:min-h-[420px]">
+      {/* Bottom Section: Hot Stocks (Left) + Utils (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
         
-        {/* Left Large Block: AI Service Monitor (5 cols) */}
-        <div className="col-span-1 lg:col-span-12 xl:col-span-5 h-full">
-          <AiServiceMonitor />
+        {/* Left Large Block: Hot Stocks (8 cols) */}
+        <div className="col-span-1 lg:col-span-12 xl:col-span-8 h-full">
+          <HotStocks onAnalyzeStock={onAnalyze} />
         </div>
 
-        {/* Middle Block: System Updates (4 cols) */}
-        <div className="col-span-1 md:col-span-7 lg:col-span-7 xl:col-span-4 h-full">
+        {/* Right Column: System Updates & Quick Actions (4 cols) */}
+        <div className="col-span-1 lg:col-span-12 xl:col-span-4 flex flex-col gap-6">
           <SystemUpdates />
-        </div>
-
-        {/* Right Column: Quick Actions & Support (3 cols) */}
-        <div className="col-span-1 md:col-span-5 lg:col-span-5 xl:col-span-3 h-full">
-           <QuickActions onAnalyze={onAnalyze} />
+          <QuickActions onAnalyze={onAnalyze} />
         </div>
       </div>
 

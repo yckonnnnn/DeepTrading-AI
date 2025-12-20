@@ -256,6 +256,15 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
     return () => clearInterval(timer);
   }, [isAnalyzing, activeInputTab]);
 
+  // Prefill stock code from sessionStorage (e.g., from HotStocks click)
+  useEffect(() => {
+    const prefillCode = sessionStorage.getItem('prefill_stock_code');
+    if (prefillCode) {
+      setQuery(prefillCode);
+      sessionStorage.removeItem('prefill_stock_code');
+    }
+  }, []);
+
   const fetchQuota = useCallback(async () => {
     try {
       if (userTier === 'guest') return;
@@ -822,7 +831,9 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({
                                     <div className="text-xs text-gray-400">{item.stockCode}</div>
                                  </div>
                              </div>
-                             <span className="text-xs text-gray-400">{item.timestamp.split(' ')[1]}</span>
+                             <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
+                               {(item as any).industry || '未知板块'}
+                             </span>
                         </div>
                     ))}
                   </div>

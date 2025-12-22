@@ -299,21 +299,35 @@ const UsageChart = ({
   </div>
 );
 
-const SystemUpdates = () => (
+const SystemUpdates = ({
+  onGoAnnouncements,
+  onOpenAnnouncement
+}: {
+  onGoAnnouncements?: () => void;
+  onOpenAnnouncement?: (id: number) => void;
+}) => (
   <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm flex flex-col">
     <div className="flex justify-between items-center mb-6">
       <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
          <Megaphone size={20} className="text-orange-500" />
          系统公告
       </h3>
-      <button className="text-gray-400 hover:text-black transition-colors bg-gray-50 p-2 rounded-xl hover:bg-gray-100">
+      <button
+        onClick={onGoAnnouncements}
+        className="text-gray-400 hover:text-black transition-colors bg-gray-50 p-2 rounded-xl hover:bg-gray-100"
+      >
          <ArrowUpRight size={18}/>
       </button>
     </div>
     
     <div className="flex-1 overflow-y-auto pr-2 space-y-2 custom-scrollbar max-h-[200px]">
       {systemUpdates.map((item) => (
-        <div key={item.id} className="flex gap-4 items-start p-3 rounded-2xl hover:bg-gray-50 transition-colors cursor-pointer group">
+        <button
+          type="button"
+          key={item.id}
+          onClick={() => onOpenAnnouncement?.(item.id)}
+          className="w-full text-left flex gap-4 items-start p-3 rounded-2xl hover:bg-gray-50 transition-colors cursor-pointer group"
+        >
            <div className={`mt-1 min-w-[36px] h-9 rounded-xl flex items-center justify-center border ${
              item.type === 'new' ? 'bg-lime-50 text-lime-600 border-lime-100' :
              item.type === 'maintenance' ? 'bg-orange-50 text-orange-600 border-orange-100' :
@@ -325,7 +339,7 @@ const SystemUpdates = () => (
               <h4 className="text-sm font-bold text-gray-800 mb-1 leading-snug group-hover:text-black transition-colors">{item.title}</h4>
               <p className="text-xs text-gray-400 font-medium">{item.date}</p>
            </div>
-        </div>
+        </button>
       ))}
     </div>
   </div>
@@ -369,10 +383,12 @@ interface DashboardProps {
   quota?: any;
   onSubscribe: () => void;
   onAnalyze: () => void;
+  onGoAnnouncements?: () => void;
+  onOpenAnnouncement?: (id: number) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, quota, onSubscribe, onAnalyze }) => {
-  const API_BASE_URL = 'http://localhost:3001';
+const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, quota, onSubscribe, onAnalyze, onGoAnnouncements, onOpenAnnouncement }) => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
   const isDemo = userTier === 'guest';
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -488,7 +504,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userTier, isAdmin, subscription, 
 
         {/* Right Column: System Updates & Quick Actions (4 cols) */}
         <div className="col-span-1 lg:col-span-12 xl:col-span-4 flex flex-col gap-6">
-          <SystemUpdates />
+          <SystemUpdates onGoAnnouncements={onGoAnnouncements} onOpenAnnouncement={onOpenAnnouncement} />
           <QuickActions onAnalyze={onAnalyze} />
         </div>
       </div>

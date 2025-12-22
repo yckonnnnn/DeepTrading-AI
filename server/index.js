@@ -16,6 +16,7 @@ import notificationsRouter from './routes/notifications.js';
 import usageRouter from './routes/usage.js';
 import reportsRouter from './routes/reports.js';
 import dashboardRouter from './routes/dashboard.js';
+import announcementsRouter from './routes/announcements.js';
 import createAnalyzeRouter from './routes/analyze.js';
 import { getBearerToken, requireAuth, verifyAuthToken } from './middlewares/auth.js';
 import { ensureNotificationsTable } from './services/notificationsService.js';
@@ -45,6 +46,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/usage', usageRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/announcements', announcementsRouter);
 
 const tryGetAuthUser = async (req) => {
   try {

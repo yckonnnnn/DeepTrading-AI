@@ -1,52 +1,116 @@
 
-import React from 'react';
-import { Megaphone, Wrench, Sparkles, ShieldAlert, Calendar } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Megaphone, Wrench, Sparkles, ShieldAlert, Calendar, X } from 'lucide-react';
 
-const announcements = [
-  { 
-    id: 1, 
-    title: '新模型上线: DeepTrading AI 2.5 Pro', 
-    date: '2025-10-24', 
-    category: 'new',
-    content: '我们很高兴地宣布，分析引擎已全面升级至 DeepTrading AI 2.5 Pro。新模型在处理复杂金融逻辑时，响应速度提升了 30%，准确率提升了 15%。现在您可以尝试上传更复杂的 K 线图进行测试。' 
-  },
-  { 
-    id: 2, 
-    title: '美股实时数据源维护通知', 
-    date: '2025-10-22', 
-    category: 'maintenance',
-    content: '为了提供更稳定的服务，我们将于今晚 02:00 - 04:00 对美股数据源进行例行维护。维护期间，实时行情可能会有短暂延迟，历史分析功能不受影响。'
-  },
-  { 
-    id: 3, 
-    title: '趋势跟踪策略算法优化完成', 
-    date: '2025-10-20', 
-    category: 'update',
-    content: '针对近期震荡市行情，我们优化了「趋势跟踪策略」的入场判定逻辑，减少了假突破信号的干扰。建议您重新运行之前的分析以获取最新建议。'
-  },
-  { 
-    id: 4, 
-    title: '用户中心界面升级', 
-    date: '2025-10-18', 
-    category: 'new',
-    content: '用户中心 UI 已焕新升级，新增了订阅管理和发票下载功能。现在您可以更方便地查看您的会员权益和历史账单。'
-  },
-  { 
-    id: 5, 
-    title: '关于防范金融诈骗的提醒', 
-    date: '2025-10-15', 
-    category: 'security',
-    content: '近期发现有不法分子冒充官方客服进行诈骗。请注意，我们不会以任何理由要求您私下转账。所有订阅请务必在官网完成。'
-  }
-];
+type AnnouncementItem = {
+  id: number;
+  title: string;
+  date: string;
+  category: string;
+  content: string;
+};
 
-const Announcements = () => {
+const Announcements = ({ focusId, isAdmin }: { focusId?: number | null; isAdmin?: boolean }) => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const [items, setItems] = useState<AnnouncementItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createCategory, setCreateCategory] = useState('new');
+  const [createContent, setCreateContent] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const canCreate = useMemo(() => Boolean(isAdmin), [isAdmin]);
+
+  const fetchAnnouncements = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) {
+        setItems([]);
+        return;
+      }
+      const resp = await fetch(`${API_BASE_URL}/api/announcements?limit=50`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setItems([]);
+        setError(typeof data?.message === 'string' ? data.message : '公告加载失败');
+        return;
+      }
+      setItems(Array.isArray(data?.items) ? data.items : []);
+    } catch {
+      setItems([]);
+      setError('公告加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [API_BASE_URL]);
   const getIcon = (category: string) => {
     switch (category) {
       case 'new': return <Sparkles size={20} className="text-lime-600" />;
       case 'maintenance': return <Wrench size={20} className="text-orange-600" />;
       case 'security': return <ShieldAlert size={20} className="text-red-600" />;
       default: return <Megaphone size={20} className="text-blue-600" />;
+    }
+  };
+
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`announcement-${focusId}`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [focusId, items.length]);
+
+  const handleCreate = async () => {
+    if (!canCreate) return;
+    const title = createTitle.trim();
+    const content = createContent.trim();
+    if (!title || !content) {
+      setCreateError('请填写标题和内容');
+      return;
+    }
+
+    try {
+      setCreating(true);
+      setCreateError(null);
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) {
+        setCreateError('未登录');
+        return;
+      }
+      const resp = await fetch(`${API_BASE_URL}/api/announcements`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ title, category: createCategory, content })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setCreateError(typeof data?.message === 'string' ? data.message : '发布失败');
+        return;
+      }
+
+      setShowCreate(false);
+      setCreateTitle('');
+      setCreateCategory('new');
+      setCreateContent('');
+      await fetchAnnouncements();
+    } catch {
+      setCreateError('发布失败');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -69,23 +133,56 @@ const Announcements = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-gray-100">
-        <div className="flex items-center gap-4 mb-10">
-           <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center shadow-lg shadow-black/10">
-              <Megaphone className="text-lime-300" size={28} />
+    <div className="max-w-4xl mx-auto pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 px-3 sm:px-0">
+      <div className="bg-white rounded-[1.5rem] sm:rounded-[2.5rem] p-4 sm:p-8 md:p-12 shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-gray-100">
+        <div className="flex items-center justify-between gap-4 mb-6 sm:mb-10">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+           <div className="w-12 h-12 sm:w-14 sm:h-14 bg-black rounded-2xl flex items-center justify-center shadow-lg shadow-black/10 flex-shrink-0">
+              <Megaphone className="text-lime-300" size={24} />
            </div>
-           <div>
-              <h2 className="text-2xl font-extrabold text-gray-900">系统公告板</h2>
-              <p className="text-gray-500 font-medium">了解 DeepTrading AI 的最新动态与维护计划</p>
+           <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">系统公告</h2>
+              <p className="text-gray-500 font-medium text-sm sm:text-base">了解 DeepTrading AI 的最新动态与维护计划</p>
            </div>
+          </div>
+
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => {
+                setCreateError(null);
+                setShowCreate(true);
+              }}
+              className="px-4 py-2 rounded-2xl bg-black text-white text-sm font-bold hover:bg-gray-900 transition-colors"
+            >
+              新增公告
+            </button>
+          )}
         </div>
 
-        <div className="relative border-l-2 border-gray-100 ml-6 space-y-12">
-           {announcements.map((item) => (
-             <div key={item.id} className="relative pl-10 group">
-                {/* Timeline Dot */}
-                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-gray-200 group-hover:border-lime-400 transition-colors shadow-sm"></div>
+        {loading && (
+          <div className="py-16 text-center text-gray-400 text-sm font-bold">加载公告中...</div>
+        )}
+
+        {!loading && error && (
+          <div className="py-10 text-center text-red-500 text-sm font-bold">{error}</div>
+        )}
+
+        {!loading && !error && items.length === 0 && (
+          <div className="py-16 text-center text-gray-400 text-sm font-bold">暂无公告</div>
+        )}
+
+        {!loading && !error && items.length > 0 && (
+          <div className="relative border-l-2 border-gray-100 ml-3 sm:ml-6 space-y-6 sm:space-y-12">
+           {items.map((item) => (
+             <div
+               key={item.id}
+               id={`announcement-${item.id}`}
+               className="relative pl-6 sm:pl-10 group scroll-mt-24"
+             >
+                <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-white border-4 transition-colors shadow-sm ${
+                  focusId === item.id ? 'border-lime-500' : 'border-gray-200 group-hover:border-lime-400'
+                }`}></div>
                 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
                    <span className={`px-3 py-1 rounded-lg text-xs font-bold border w-fit flex items-center gap-1.5 ${getBadgeStyle(item.category)}`}>
@@ -98,17 +195,99 @@ const Announcements = () => {
                    </span>
                 </div>
 
-                <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-lime-700 transition-colors">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 group-hover:text-lime-700 transition-colors">
                   {item.title}
                 </h3>
                 
-                <div className="bg-gray-50 rounded-2xl p-5 text-sm text-gray-600 leading-relaxed font-medium border border-gray-100 group-hover:bg-white group-hover:shadow-md group-hover:border-gray-200 transition-all">
+                <div className={`rounded-2xl p-4 sm:p-5 text-sm text-gray-600 leading-relaxed font-medium border transition-all ${
+                  focusId === item.id
+                    ? 'bg-white shadow-md border-lime-200'
+                    : 'bg-gray-50 border-gray-100 group-hover:bg-white group-hover:shadow-md group-hover:border-gray-200'
+                }`}>
                    {item.content}
                 </div>
              </div>
            ))}
-        </div>
+          </div>
+        )}
       </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !creating && setShowCreate(false)} />
+          <div className="relative w-full max-w-xl bg-white rounded-[2rem] border border-gray-100 shadow-[0_30px_80px_rgba(0,0,0,0.18)] overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="font-extrabold text-gray-900">新增公告</div>
+              <button
+                type="button"
+                onClick={() => !creating && setShowCreate(false)}
+                className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 hover:text-black hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <div className="text-xs font-bold text-gray-500 mb-2">标题</div>
+                <input
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-lime-300 font-semibold"
+                  placeholder="请输入公告标题"
+                />
+              </div>
+
+              <div>
+                <div className="text-xs font-bold text-gray-500 mb-2">类型</div>
+                <select
+                  value={createCategory}
+                  onChange={(e) => setCreateCategory(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-lime-300 font-semibold"
+                >
+                  <option value="new">新功能</option>
+                  <option value="maintenance">系统维护</option>
+                  <option value="security">安全提醒</option>
+                  <option value="update">产品更新</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="text-xs font-bold text-gray-500 mb-2">内容</div>
+                <textarea
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-lime-300 font-semibold min-h-[140px]"
+                  placeholder="请输入公告内容"
+                />
+              </div>
+
+              {createError && (
+                <div className="text-sm font-bold text-red-500">{createError}</div>
+              )}
+            </div>
+
+            <div className="px-6 py-5 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => setShowCreate(false)}
+                className="px-4 py-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-gray-700 font-bold hover:bg-gray-100 transition-colors disabled:opacity-60"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={creating}
+                onClick={handleCreate}
+                className="px-5 py-2.5 rounded-2xl bg-black text-white font-extrabold hover:bg-gray-900 transition-colors disabled:opacity-60"
+              >
+                {creating ? '发布中...' : '发布'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

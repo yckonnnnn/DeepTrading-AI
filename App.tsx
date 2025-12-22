@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, 
   Bell, 
@@ -366,7 +365,7 @@ const Header = ({
         <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
         <p className="text-gray-400 text-sm mt-1 font-medium">欢迎回来, {userTier === 'guest' ? '访客' : (authUser?.username || '用户')}</p>
       </div>
-      <div className="flex items-center gap-2 md:gap-4 relative w-full md:w-auto justify-between md:justify-end">
+      <div className={`flex items-center gap-2 md:gap-4 relative w-full md:w-auto ${isAdmin ? 'justify-between md:justify-end' : 'justify-end'}`}>
         
         {isAdmin && (
           <div className="bg-white border border-gray-200 rounded-lg p-1 flex items-center shadow-sm">
@@ -457,6 +456,8 @@ type AppView = 'landing' | 'login' | 'register' | 'terms' | 'app';
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [announcementFocusId, setAnnouncementFocusId] = useState<number | null>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
   const [userTier, setUserTier] = useState<UserTier>('free'); 
   const [isAdmin, setIsAdmin] = useState(false);
   const [authUser, setAuthUser] = useState<{ user_id?: string | null; username?: string | null; email?: string | null; channel?: number | null } | null>(null);
@@ -635,6 +636,14 @@ const App: React.FC = () => {
     };
   }, [currentView, authRefreshNonce]);
 
+  useEffect(() => {
+    if (currentView !== 'app') return;
+    if (activeTab !== 'analysis') return;
+    const el = mainScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: 'auto' });
+  }, [activeTab, currentView]);
+
   // --- Handlers ---
   
   const handleLoginSuccess = () => {
@@ -742,6 +751,16 @@ const App: React.FC = () => {
     setActiveTab('analysis');
   };
 
+  const handleGoAnnouncements = () => {
+    setAnnouncementFocusId(null);
+    setActiveTab('announcements');
+  };
+
+  const handleOpenAnnouncement = (id: number) => {
+    setAnnouncementFocusId(id);
+    setActiveTab('announcements');
+  };
+
   if (!mounted) return null;
 
   // --- View Routing ---
@@ -783,6 +802,8 @@ const App: React.FC = () => {
             quota={authQuota}
             onSubscribe={handleSubscribe} 
             onAnalyze={handleAnalyzeClick}
+            onGoAnnouncements={handleGoAnnouncements}
+            onOpenAnnouncement={handleOpenAnnouncement}
           />
         );
       case 'analysis':
@@ -809,7 +830,7 @@ const App: React.FC = () => {
       case 'settings':
         return <Settings authUser={authUser} onProfileUpdated={() => setAuthRefreshNonce((v) => v + 1)} />;
       case 'announcements':
-        return <Announcements />;
+        return <Announcements focusId={announcementFocusId} isAdmin={isAdmin} />;
       case 'featured':
         return <FeaturedContent />;
       case 'feedback':
@@ -849,7 +870,7 @@ const App: React.FC = () => {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <main className="flex-1 md:ml-20 p-4 md:p-8 h-screen overflow-y-auto pb-24 md:pb-8">
+      <main ref={mainScrollRef} className="flex-1 md:ml-20 p-4 md:p-8 h-screen overflow-y-auto pb-24 md:pb-8">
         <Header 
           title={getPageTitle()} 
           userTier={userTier} 

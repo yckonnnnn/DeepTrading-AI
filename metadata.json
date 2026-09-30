@@ -1,5 +1,5 @@
 {
   "name": "DeepTrading AI",
-  "description": "A modern fintech dashboard featuring real-time portfolio tracking and AI-powered stock analysis using Google Gemini.",
+  "description": "A modern fintech dashboard featuring portfolio tracking (demo market data) and AI-powered stock analysis using Google Gemini.",
   "requestFramePermissions": []
 }

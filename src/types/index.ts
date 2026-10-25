@@ -1,0 +1,195 @@
+
+export type TabId = 'dashboard' | 'analysis' | 'history' | 'subscription' | 'settings' | 'announcements' | 'featured' | 'feedback' | 'contact';
+
+export type UserTier = 'guest' | 'free' | 'pro';
+
+export interface AppNotification {
+  id: number;
+  title: string;
+  desc: string;
+  time: string;
+  type: 'new' | 'maintenance' | 'report' | 'update' | 'subscription';
+  read: boolean;
+  demo?: boolean;
+  data?: { reportId: string };
+}
+
+export interface AuthUser {
+  user_id?: string | null;
+  username?: string | null;
+  email?: string | null;
+  channel?: number | null;
+}
+
+export interface AuthQuota {
+  quotaLimit?: number | null;
+  usedSuccess?: number | null;
+  remainingSuccess?: number | null;
+  historyCount?: number | null;
+  isUnlimited?: boolean;
+}
+
+export interface StockDataPoint {
+  time: string;
+  price: number;
+  vol: number;
+}
+
+export interface WatchListItem {
+  code: string;
+  name: string;
+  price: number;
+  change: number;
+  data: number[];
+}
+
+export interface TechnicalIndicator {
+  name: string; // e.g., "RSI", "MACD"
+  value: string; // e.g., "Overbought", "Golden Cross"
+  status: string; // Short description e.g., "Overbought"
+  signal: string; // Detailed interpretation
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface TechnicalAnalysisAdvice {
+  points: string[];
+  summary: string;
+}
+
+export interface StrategyLogic {
+  points: string[];
+  riskWarning: string;
+}
+
+export interface AnalysisStrategy {
+  action: string; // e.g., "Buy on Dip"
+  entryRange: string;
+  targetPrice: string;
+  stopLoss: string;
+  logic: string | StrategyLogic;
+}
+
+export interface MoneyFlowMonitor {
+  tradeDate: string;
+  netInflow3d: number | null; // 单位：亿元（前端展示用）
+  netInflow5d: number | null; // 单位：亿元（前端展示用）
+  netInflow20d: number | null; // 单位：亿元（前端展示用）
+  mainBuyAmount?: number | null; // 单位：亿元（前端展示用）
+  mainSellAmount?: number | null; // 单位：亿元（前端展示用）
+  fundSentimentIndex?: number | null; // 单位：0-100
+  fundSentimentLevel?: '恐慌' | '中性' | '乐观' | '极度乐观' | null;
+  retailSentimentRatio?: number | null; // 兼容旧数据（单位：%，0-100）
+}
+
+export type NewsSentiment = 'positive' | 'negative' | 'neutral';
+
+export interface NewsItem {
+  title: string;
+  sentiment: NewsSentiment;
+}
+
+export interface NewsAnalysis {
+  sentimentScore: number;
+  news: NewsItem[];
+  summary: string;
+}
+
+// ==================== 真实股票数据类型 ====================
+
+export interface StockInfo {
+  symbol: string;
+  name: string;
+  industry: string | null;
+  latestDate: string;
+  latestPrice: number;
+  open: number;
+  high: number;
+  low: number;
+  preClose: number;
+  changeAmount: number;
+  changePercent: number;
+}
+
+export interface MACDIndicator {
+  dif: string;
+  dea: string;
+  histogram: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface RSIIndicator {
+  value: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface BollingerBandsIndicator {
+  upper: string;
+  middle: string;
+  lower: string;
+  currentPosition: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface VolumeIndicator {
+  latest: string;
+  avg5: string;
+  avg20: string;
+  changePercent: string;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface TrendStrengthIndicator {
+  strength: string;
+  periodChange: string;
+  upDays: number;
+  downDays: number;
+  status: string;
+  interpretation: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface RealStockIndicators {
+  macd: MACDIndicator;
+  rsi: RSIIndicator;
+  bollingerBands: BollingerBandsIndicator;
+  volume: VolumeIndicator;
+  trendStrength: TrendStrengthIndicator;
+}
+
+export interface RealStockData {
+  stockInfo: StockInfo;
+  indicators: RealStockIndicators;
+}
+
+// ==================== AI 分析报告类型 ====================
+
+export interface AIAnalysisReport {
+  id: string; // Added ID for list keys
+  stockName: string;
+  stockCode: string;
+  timestamp: string;
+  strategyMode: string; // New: "趋势跟踪策略" or "短线博弈策略"
+  recommendation: "Buy" | "Wait" | "Sell"; // Strict 3 tiers
+  confidenceScore: number;
+  analysisSummary: string; // New: Core conclusion/summary
+  fundsFlow: {
+      inflow: string; // e.g., "Main funds flowing in"
+      retailSentiment: string; // e.g., "Retail investors cautious"
+  };
+  marketSentiment: string; // e.g., "Optimistic"
+  keyDrivers: string[];
+  technicalIndicators: TechnicalIndicator[]; // Must contain RSI, MACD, Bollinger Bands, Volume, Trend Strength
+  technicalAnalysisAdvice: string | TechnicalAnalysisAdvice; // 兼容旧数据（string）与新版结构（points/summary）
+  strategy: AnalysisStrategy;
+  moneyFlowMonitor?: MoneyFlowMonitor; // 新增：真实资金流向监控（来自 a_stock_money_flow）
+  newsAnalysis?: NewsAnalysis; // 新增：舆情风向分析（当前可用假数据，后续可接真实新闻源）
+  realData?: RealStockData; // 新增：真实股票数据和指标
+}

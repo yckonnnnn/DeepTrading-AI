@@ -1,0 +1,143 @@
+/* ============================================================
+   Motion — centralized keyframes and transition utilities.
+   Transform/opacity only. Reduced-motion kills everything.
+   ============================================================ */
+
+@keyframes dt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dt-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dt-fade-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dt-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dt-sheet-up {
+  from { transform: translateY(40px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes dt-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.045); opacity: 0.88; }
+}
+
+@keyframes dt-ripple {
+  0% { transform: scale(0.72); opacity: 0.55; }
+  70% { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes dt-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes dt-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dt-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+@keyframes dt-cloud-drift {
+  from { transform: translate3d(-3.5%, 0, 0); }
+  to { transform: translate3d(3.5%, -1.2%, 0); }
+}
+
+@keyframes dt-bar-grow {
+  from { transform: scaleY(0.04); }
+  to { transform: scaleY(1); }
+}
+
+/* ---------- Utilities ---------- */
+
+.anim-page {
+  animation: dt-fade-up var(--t-slow) var(--ease) both;
+}
+
+.anim-fade {
+  animation: dt-fade-in var(--t-med) var(--ease) both;
+}
+
+.anim-up {
+  animation: dt-fade-up var(--t-slow) var(--ease) both;
+}
+
+.anim-pop {
+  animation: dt-pop-in var(--t-med) var(--ease-spring) both;
+}
+
+.anim-sheet {
+  animation: dt-sheet-up var(--t-med) var(--ease) both;
+}
+
+.anim-breathe {
+  animation: dt-breathe 2.6s ease-in-out infinite;
+}
+
+.anim-spin {
+  animation: dt-spin 0.9s linear infinite;
+}
+
+/* Staggered card entry — subtle, capped delay */
+.stagger > * {
+  animation: dt-fade-up var(--t-slow) var(--ease) both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: 30ms; }
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 110ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 190ms; }
+.stagger > *:nth-child(6) { animation-delay: 230ms; }
+.stagger > *:nth-child(n+7) { animation-delay: 260ms; }
+
+/* ---------- Skeleton shimmer ---------- */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-3);
+  border-radius: var(--r-sm);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.75) 50%,
+    transparent 68%
+  );
+  background-size: 200% 100%;
+  animation: dt-shimmer 1.6s ease-in-out infinite;
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

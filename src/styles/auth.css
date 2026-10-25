@@ -1,0 +1,194 @@
+/* ============================================================
+   Auth — split layout, brand panel, forms
+   ============================================================ */
+
+.auth {
+  min-height: 100dvh;
+  display: flex;
+  background: var(--bg);
+}
+
+.auth__form-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s5) var(--s5) var(--s10);
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .auth__form-side {
+    width: 55%;
+    max-width: 640px;
+    padding: var(--s8) var(--s16);
+    justify-content: center;
+  }
+}
+
+.auth__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  padding: 6px 10px;
+  margin: -6px 0 var(--s4) -10px;
+  border-radius: var(--r-full);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.auth__back:hover {
+  color: var(--ink);
+  background: rgba(16, 24, 32, 0.05);
+}
+
+.auth__form {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  animation: dt-fade-up var(--t-slow) var(--ease) both;
+}
+
+@media (min-width: 1024px) {
+  .auth__form {
+    margin: 0;
+  }
+}
+
+.auth__title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.auth__sub {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 14.5px;
+  margin-bottom: var(--s8);
+}
+
+.auth__form form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.auth__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: var(--r-md);
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.auth__alert--error {
+  background: var(--danger-pale);
+  color: var(--danger);
+}
+
+.auth__alert--success {
+  background: var(--green-pale);
+  color: var(--green-deep);
+}
+
+.auth__switch {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-2);
+  margin-top: var(--s5);
+}
+
+.auth__switch button {
+  color: var(--blue);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.auth__switch button:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.link-action {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--blue);
+}
+
+.link-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-action:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+/* ================= Brand panel (desktop) ================= */
+
+.auth__brand-side {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  padding: var(--s16);
+  color: var(--ink);
+}
+
+@media (min-width: 1024px) {
+  .auth__brand-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+}
+
+.auth__brand-side .lp-sky {
+  border-radius: 0;
+}
+
+.auth__brand-quote {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+}
+
+.auth__brand-quote h2 {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.22;
+}
+
+.auth__brand-quote p {
+  margin-top: 12px;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.75;
+  max-width: 360px;
+}
+
+.auth__brand-foot {
+  position: relative;
+  z-index: 1;
+  font-size: 12.5px;
+  color: var(--text-2);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}

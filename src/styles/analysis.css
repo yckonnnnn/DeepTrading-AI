@@ -1,0 +1,410 @@
+/* ============================================================
+   Analysis — input panel, upload, strategies, loading, sidebar
+   ============================================================ */
+
+.ana-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  align-items: stretch;
+}
+
+@media (min-width: 1200px) {
+  .ana-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.ana-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.ana-side {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+@media (min-width: 1200px) {
+  .ana-side {
+    width: 316px;
+    flex-shrink: 0;
+  }
+}
+
+/* ---------- 输入面板 ---------- */
+
+.ana-panel {
+  position: relative;
+}
+
+.ana-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s5);
+}
+
+.quota-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--r-full);
+  background: var(--green-pale);
+  border: 1px solid #d5efe1;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--green-deep);
+}
+
+.quota-pill--warn {
+  background: var(--amber-pale);
+  border-color: #f0e0bd;
+  color: var(--amber);
+}
+
+/* 上传区 */
+.upload-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 190px;
+  border: 2px dashed var(--divider);
+  border-radius: var(--r-xl);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: center;
+  padding: var(--s5);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+.upload-zone:hover {
+  border-color: #b9cfec;
+  background: var(--blue-soft);
+}
+
+.upload-zone--drag {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  transform: scale(1.01);
+}
+
+.upload-zone__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--divider-soft);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+
+.upload-zone:hover .upload-zone__icon,
+.upload-zone--drag .upload-zone__icon {
+  color: var(--blue);
+}
+
+.upload-preview {
+  position: relative;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  border: 1px solid var(--divider-soft);
+  background: var(--surface-2);
+}
+
+.upload-preview img {
+  width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  background: #0d1420;
+}
+
+.upload-preview__bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+/* 策略选择 */
+.strategy-grid {
+  display: grid;
+  gap: var(--s3);
+}
+
+@media (min-width: 640px) {
+  .strategy-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.strategy-option {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--divider);
+  background: var(--surface);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.strategy-option:hover {
+  border-color: #c9d8ee;
+}
+
+.strategy-option--active {
+  border-color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.strategy-option__check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dt-pop-in var(--t-fast) var(--ease-spring) both;
+}
+
+.strategy-option__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.strategy-option--active .strategy-option__icon {
+  background: var(--green-pale);
+  color: var(--green-deep);
+}
+
+/* 提交按钮 */
+.ana-submit {
+  width: 100%;
+  height: 54px;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: var(--shadow-md);
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+}
+
+.ana-submit:hover:not(:disabled) {
+  background: var(--ink-hover);
+  box-shadow: var(--shadow-lg);
+}
+
+.ana-submit:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.ana-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 搜索建议 */
+.suggest-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-pop);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  max-height: 340px;
+  overflow-y: auto;
+  animation: dt-fade-down var(--t-fast) var(--ease) both;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--divider-soft);
+  transition: background var(--t-fast) var(--ease);
+}
+
+.suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.suggest-item:hover {
+  background: var(--blue-soft);
+}
+
+.suggest-item .mono {
+  background: var(--surface-3);
+  padding: 2px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------- 加载（诚实的单态设计） ---------- */
+
+.ana-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--s16) var(--s6);
+}
+
+.ana-loading__orbit {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin-bottom: var(--s6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ana-loading__core {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: linear-gradient(150deg, #1b2530, var(--ink));
+  color: #7eddb2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-md);
+  animation: dt-breathe 2.8s ease-in-out infinite;
+  z-index: 1;
+}
+
+.ana-loading__ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 28px;
+  border: 1.5px solid var(--green);
+  opacity: 0;
+  animation: dt-ripple 2.4s ease-out infinite;
+}
+
+.ana-loading__ripple:nth-child(2) {
+  animation-delay: 1.2s;
+}
+
+.ana-loading h3 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ana-loading__sub {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  max-width: 380px;
+  line-height: 1.7;
+}
+
+.ana-loading__timer {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--divider-soft);
+  padding: 6px 14px;
+  border-radius: var(--r-full);
+}
+
+/* ---------- 结果区 ---------- */
+
+.ana-result {
+  scroll-margin-top: 90px;
+}
+
+/* 侧栏卡片 */
+.tip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tip-list li {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+
+.tip-list__idx {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(34, 181, 120, 0.16);
+  color: var(--green-deep);
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.risk-note {
+  border-radius: var(--r-lg);
+  border: 1px solid #f0e0bd;
+  background: var(--amber-pale);
+  padding: var(--s4) var(--s5);
+}
+
+.risk-note p {
+  font-size: 12.5px;
+  color: var(--amber);
+  line-height: 1.7;
+  font-weight: 600;
+}

@@ -1,7 +1,7 @@
 /**
  * 统一 API 入口。
  * 默认走同源（开发环境由 Vite 代理 /api、/uploads 到后端，
- * 生产环境由 Nginx 反代），也可用 VITE_API_BASE_URL 指定。
+ * 生产环境由 Vercel 同源函数承接），也可用 VITE_API_BASE_URL 指定。
  */
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || '';

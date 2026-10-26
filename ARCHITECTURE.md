@@ -14,7 +14,7 @@
     ├── main.tsx                # React 挂载入口，引入全局样式
     ├── app/                    # 应用外壳
     │   ├── App.tsx             # 视图路由：/ · /login · /register · /terms · /app/:tab
-    │   ├── router.tsx          # 零依赖轻路由（pushState/popstate，Nginx try_files 兜底）
+    │   ├── router.tsx          # 零依赖轻路由（pushState/popstate，Vercel 重写兜底）
     │   ├── session.tsx         # 会话上下文：token/游客态、用户、配额、报告历史、30s 刷新
     │   └── notifications.tsx   # 通知上下文：服务端拉取 + 本地合并 + 已读同步
     ├── layouts/
@@ -56,9 +56,9 @@
 
 ## 关键约定
 
-- API 一律走同源（`services/api.ts`），开发由 Vite 代理、生产由 Nginx 反代；
+- API 一律走同源（`services/api.ts`），开发由 Vite 代理、生产由 Vercel 函数承载；
   可用 `VITE_API_BASE_URL` 覆盖。
-- 路由使用 History API，Nginx `try_files ... /index.html` 兜底，刷新与直链可用。
+- 路由使用 History API，Vercel 将非 API 请求重写到 `index.html`，刷新与直链可用。
 - 管理员「测试模式」档位切换仅本地预览（自定义事件 `dt-dev-tier`）。
 - 演示/示例数据一律带「演示数据」标签，与真实数据明确区分。
 - 开发验收：`/app/analysis?mockreport=1` 加载演示报告（仅 DEV 构建生效）。

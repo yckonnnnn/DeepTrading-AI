@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 /**
  * 轻量路由（零依赖）：
  * - pushState/popstate，浏览器前进后退可用
- * - Nginx try_files 兜底，刷新/直链可用
+ * - Vercel 重写兜底，刷新/直链可用
  */
 
 interface RouteState {

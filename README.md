@@ -7,7 +7,8 @@
 [![在线体验](https://img.shields.io/badge/🌐_在线体验-deeptrading.top-84cc16?style=for-the-badge)](https://deeptrading.top)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Google Gemini](https://img.shields.io/badge/AI-Gemini_2.5-4285F4?style=flat&logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![Qwen](https://img.shields.io/badge/AI-Qwen-FF6A00?style=flat)](https://bailian.console.aliyun.com)
+[![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat&logo=vercel&logoColor=white)](https://vercel.com)
 
 </div>
 
@@ -57,11 +58,13 @@ DeepTrading AI 是一个面向 **A 股 / 港股 / 美股** 个人投资者的 AI
 | 前端框架 | React 19 + TypeScript + Vite 6 |
 | UI / 样式 | Tailwind CSS、lucide-react，Plus Jakarta Sans 字体 |
 | 图表 | Recharts（使用频率柱状图、情绪分布等） |
-| AI 引擎 | Google **Gemini 2.5 Flash**（`@google/genai` SDK，JSON Schema 结构化输出） |
+| AI 引擎 | 阿里云百炼 **Qwen**（`qwen-plus` / `qwen-vl-plus`，结构化输出） |
+| 后端 | Express API（Vercel Functions） |
+| 数据库 | Neon Postgres |
 | 图片导出 | html2canvas |
-| 部署 | 纯静态构建产物，已部署至 [deeptrading.top](https://deeptrading.top) |
+| 部署 | Vercel，已部署至 [deeptrading.top](https://deeptrading.top) |
 
-**架构说明**：本项目为纯前端 SPA，浏览器端直接调用 Gemini API，无需自建后端。AI 输出经由严格的 `responseSchema` 约束，保证报告字段结构稳定、可直接渲染。
+**架构说明**：前端为 React SPA，通过同源 `/api` 调用 Vercel 上的 Express 服务；用户、配额、报告、公告和上传图片均在 Neon Postgres 中。AI 调用由服务端完成，密钥不会进入浏览器。
 
 ```
 用户输入（股票代码 / K线截图）
@@ -70,7 +73,10 @@ DeepTrading AI 是一个面向 **A 股 / 港股 / 美股** 个人投资者的 AI
 策略模式选择（趋势跟踪 / 短线博弈）
         │
         ▼
-Gemini 2.5 Flash（结构化 JSON 输出 + 金融分析师系统指令）
+后端鉴权 / 配额 / 行情数据（Neon Postgres）
+        │
+        ▼
+Qwen（结构化 JSON 输出 + 金融分析师系统指令）
         │
         ▼
 分析报告渲染（建议 / 指标 / 交易计划）──► 历史档案 / PNG 导出
@@ -78,22 +84,23 @@ Gemini 2.5 Flash（结构化 JSON 输出 + 金融分析师系统指令）
 
 ## 🚀 快速开始
 
-**前置要求**：Node.js 18+
+**前置要求**：Node.js 20+
 
 ```bash
 # 1. 安装依赖
 npm install
 
-# 2. 配置 Gemini API Key（在 https://aistudio.google.com 免费获取）
-echo "GEMINI_API_KEY=你的Key" > .env.local
+# 2. 配置数据库、JWT 和百炼 API Key（参考 .env.example）
+cp .env.example .env.local
 
-# 3. 启动开发服务器
+# 3. 启动后端（端口 3001）
+npm run server
+
+# 4. 另开一个终端启动前端（端口 3000）
 npm run dev
 ```
 
-访问 `http://localhost:3000` 即可使用。生产构建：`npm run build`，产物为纯静态文件，可部署到任意静态托管服务。
-
-> ⚠️ **安全提示**：本架构将 API Key 编译进前端 bundle，适合本地开发与个人使用。若需公开部署，建议将 Gemini 调用迁移至后端代理，避免 Key 泄露。
+访问 `http://localhost:3000` 即可使用。部署到 Vercel：`./deploy.sh`。
 
 ## 🗺 Roadmap
 

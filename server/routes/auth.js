@@ -352,7 +352,7 @@ router.post('/register', async (req, res) => {
     await connection.beginTransaction();
 
     const [existingUsers] = await connection.execute(
-      'SELECT id, username, email FROM users WHERE email = ? OR username = ? LIMIT 1',
+      'SELECT id, username, email FROM users WHERE email = ? OR lower(username) = lower(?) LIMIT 1',
       [email, username]
     );
     if (Array.isArray(existingUsers) && existingUsers.length > 0) {
@@ -444,7 +444,7 @@ router.post('/login', async (req, res) => {
     const [rows] = await pool.execute(
       isEmail
         ? 'SELECT id, user_id, username, email, password_hash, status, channel FROM users WHERE email = ? LIMIT 1'
-        : 'SELECT id, user_id, username, email, password_hash, status, channel FROM users WHERE username = ? LIMIT 1',
+        : 'SELECT id, user_id, username, email, password_hash, status, channel FROM users WHERE lower(username) = lower(?) LIMIT 1',
       [identifier]
     );
 

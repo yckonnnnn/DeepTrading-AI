@@ -1,6 +1,5 @@
 import express from 'express';
 import crypto from 'crypto';
-import fs from 'fs';
 
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -16,6 +15,7 @@ const createAnalyzeRouter = ({
   buildEnhancedPrompt,
   buildDemoNewsAnalysis,
   persistAnalysisReportToDb,
+  storeUpload,
   inferMarketFromSymbol,
   getTierForUser,
   getActiveSubscriptionForUser,
@@ -345,8 +345,7 @@ const createAnalyzeRouter = ({
       };
 
       // 读取图片并转为 base64
-      const imagePath = req.file.path;
-      const imageBuffer = fs.readFileSync(imagePath);
+      const imageBuffer = req.file.buffer;
       const base64Image = imageBuffer.toString('base64');
       const mimeType = req.file.mimetype;
       const base64Data = `data:${mimeType};base64,${base64Image}`;
@@ -366,6 +365,9 @@ const createAnalyzeRouter = ({
       if (!reservation.ok) {
         return res.status(reservation.status).json(reservation.payload);
       }
+
+      const storedFile = await storeUpload(req.file);
+      req.file.filename = storedFile.filename;
 
       console.log(`📸 收到 K 线图片: ${req.file.filename}`);
       console.log(`📊 开始使用 qwen3-vl-plus 模型分析...`);
@@ -545,19 +547,21 @@ const createAnalyzeRouter = ({
   });
 
   // 图片上传接口（仅上传不分析）
-  router.post('/upload-image', upload.single('image'), (req, res) => {
+  router.post('/upload-image', upload.single('image'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: '请上传图片' });
       }
 
+      const stored = await storeUpload(req.file);
       res.json({
         success: true,
-        filename: req.file.filename,
-        url: `/uploads/${req.file.filename}`,
-        size: req.file.size
+        filename: stored.filename,
+        url: stored.url,
+        size: stored.size
       });
     } catch (error) {
+      console.error('❌ upload image error:', error);
       res.status(500).json({ error: '图片上传失败' });
     }
   });

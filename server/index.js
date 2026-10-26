@@ -4,10 +4,9 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import pool from './db/pool.js';
+import { buildAssetFilename, getAsset, saveAsset } from './services/assetService.js';
 import { inferMarketFromSymbol } from './utils/market.js';
 import { getRequestIp } from './utils/request.js';
 import authRouter from './routes/auth.js';
@@ -29,9 +28,6 @@ import {
   getTierForUser,
   reserveQuotaForAttempt
 } from './services/quotaService.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: '.env.local' });
 
@@ -917,28 +913,10 @@ function buildEnhancedPrompt(stockDataWithIndicators, moneyFlowMonitor, strategy
 }
 
 /**
- * 确保 uploads 目录存在
+ * 图片先放内存，再写进数据库，避免依赖服务器本地磁盘。
  */
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-/**
- * 配置 multer 存储
- */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'kline-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
+const upload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -951,13 +929,38 @@ const upload = multer({
   }
 });
 
-// 提供静态文件访问（用于访问上传的图片）
-app.use('/uploads', express.static(uploadsDir));
+// 上传的图片直接由数据库读出后返回
+app.get('/uploads/:filename', async (req, res) => {
+  try {
+    const asset = await getAsset(req.params.filename);
+    if (!asset) {
+      return res.status(404).json({ error: '图片不存在' });
+    }
+    res.setHeader('Content-Type', asset.content_type || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.end(asset.data);
+  } catch (error) {
+    console.error('❌ read upload error:', error);
+    return res.status(500).json({ error: '图片读取失败' });
+  }
+});
+
+/**
+ * 统一把上传文件落到数据库，并返回文件名/地址。
+ */
+const storeUpload = async (file) => {
+  const filename = file.filename || buildAssetFilename(file.mimetype, file.originalname);
+  const stored = await saveAsset({
+    filename,
+    contentType: file.mimetype,
+    buffer: file.buffer
+  });
+  return { ...stored, filename };
+};
 
 const apiKey = process.env.Tongyiqianwen_API_KEY;
 if (!apiKey) {
-  console.error('❌ Tongyiqianwen_API_KEY is missing from .env.local');
-  process.exit(1);
+  console.error('❌ Tongyiqianwen_API_KEY is missing');
 }
 
 const client = new OpenAI({
@@ -1113,6 +1116,7 @@ app.use(
     pool,
     client,
     upload,
+    storeUpload,
     SYSTEM_INSTRUCTION,
     KLINE_ANALYSIS_INSTRUCTION,
     tryGetAuthUser,
@@ -1129,9 +1133,11 @@ app.use(
   })
 );
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`✅ Backend server running at http://localhost:${PORT}`);
-  console.log(`✅ API Key loaded: ${apiKey.slice(0, 8)}...`);
-  console.log(`📁 Uploads directory: ${uploadsDir}`);
-});
+if (!process.env.VERCEL) {
+  const PORT = Number(process.env.PORT) || 3001;
+  app.listen(PORT, () => {
+    console.log(`✅ Backend server running at http://localhost:${PORT}`);
+  });
+}
+
+export default app;

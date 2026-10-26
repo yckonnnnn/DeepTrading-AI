@@ -5,18 +5,7 @@ let announcementsSeedEnsured = false;
 
 const ensureAnnouncementsTable = async () => {
   if (announcementsTableEnsured) return;
-  await pool.execute(
-    `CREATE TABLE IF NOT EXISTS announcements (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      title VARCHAR(255) NOT NULL,
-      category VARCHAR(32) NOT NULL,
-      content TEXT NOT NULL,
-      created_by VARCHAR(64) NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      INDEX idx_announcements_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-  );
+  // 表结构由 server/db/schema.js 统一创建，这里不再重复建表。
   announcementsTableEnsured = true;
 };
 
